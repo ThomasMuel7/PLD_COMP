@@ -44,7 +44,6 @@ def run_tests():
 
             if i + 1 < len(lines):
                 result_line = lines[i+1]
-                print(result_line)
                 if "TEST OK" in result_line:
                     passed_tests += 1
                 elif "TEST FAIL" in result_line:
