@@ -1,0 +1,5 @@
+int main() {
+    int a;
+    a = 20 / 4;
+    return a;
+}

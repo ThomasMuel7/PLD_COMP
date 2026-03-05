@@ -28,6 +28,7 @@ expr : '(' expr ')'                                    #ParensExpr
 VAR : [a-zA-Z_][a-zA-Z0-9_]* ;
 INT : [0-9]+ ;
 CHAR : '\'' . '\'' ;
-COMMENT : '/*' .*? '*/' -> skip ;
+COMMENTMULTI : '/*' .*? '*/' -> skip ;
+COMMENT : '//' .* '\n' -> skip ;
 DIRECTIVE : '#' .*? '\n' -> skip ;
 WS    : [ \t\r\n] -> channel(HIDDEN);
