@@ -29,6 +29,6 @@ VAR : [a-zA-Z_][a-zA-Z0-9_]* ;
 INT : [0-9]+ ;
 CHAR : '\'' . '\'' ;
 COMMENTMULTI : '/*' .*? '*/' -> skip ;
-COMMENT : '//' .* '\n' -> skip ;
+COMMENT : '//' ~[\r\n]* -> skip ;
 DIRECTIVE : '#' .*? '\n' -> skip ;
 WS    : [ \t\r\n] -> channel(HIDDEN);
