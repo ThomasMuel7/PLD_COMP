@@ -1,0 +1,11 @@
+compiler/build/
+compiler/generated/
+compiler/ifcc
+exo/
+glpoly.pdf
+PLDCOMP.pdf
+poly-backend.pdf
+ifcc-test.py
+.DS_Store
+ifcc-test-output/
+
