@@ -9,3 +9,4 @@ ifcc-test.py
 .DS_Store
 ifcc-test-output/
 compiler/config.mk
+.vscode

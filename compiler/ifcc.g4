@@ -8,7 +8,7 @@ stmt : declare_stmt | assign_stmt | return_stmt ;
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
-assign_stmt : VAR '=' expr ';' ;
+assign_stmt : VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr ';' ;
 
 return_stmt : 'return' expr ';' ;
 
