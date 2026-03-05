@@ -3,6 +3,5 @@ int main() {
     int b;
     a = 3;
     b = 4;
-    if (a < b) return 1;
-    return 0;
+    return (a < b); /* a < b => retourne 1 */
 }

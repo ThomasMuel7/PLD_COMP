@@ -3,6 +3,5 @@ int main() {
     int b;
     a = 5;
     b = 5;
-    if (a <= b && a >= b) return 1;
-    return 0;
+    return (a <= b) & (a >= b); /* a <= b ET a >= b => les deux vrais => retourne 1 */
 }
