@@ -10,3 +10,4 @@ ifcc-test.py
 ifcc-test-output/
 config.mk
 
+.vscode/
