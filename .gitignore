@@ -8,5 +8,4 @@ poly-backend.pdf
 ifcc-test.py
 .DS_Store
 ifcc-test-output/
-config.mk
-
+compiler/config.mk
