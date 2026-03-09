@@ -233,11 +233,16 @@ Pour voir la répartition des tâches et l'avancement du projet, consultez le do
 
 ## 10. Pourquoi certains tests ne fonctionnent pas
 
-### 10.1 Règle du "Maximal Munch" dans GCC
+### 10.1 testfiles-minus-invalid-20_sub_fail2
+
+#### 10.1.1 Règle du "Maximal Munch" dans GCC
 
 GCC concatène les deux tirets de `5 -- 5` en un seul token `--` (decrément). Appliqué à la constante `5`, cela génère une erreur : on ne peut pas décrémenter une lvalue non modifiable.
 
-### 10.2 Pourquoi la grammaire `ifcc.g4` l'accepte
+#### 10.1.2 Pourquoi la grammaire `ifcc.g4` l'accepte
 
 La grammaire n'a pas de règle pour `--`; le lexer ANTLR sépare chaque `-`. Le parser voit donc `5`, `-`, `-`, `5` et interprète cela comme `5 - (-5)`. Aucun problème n'apparaît, d'où l'acceptation du programme.
 
+### 10.2 testfiles-div-invalid-37_division_0 et testfiles-div-invalid-37_division_0
+
+Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pas sous mac (C'est probablement du au fait que notre gcc sous mac n'est pas exactement le meme que celui sous linux) 
