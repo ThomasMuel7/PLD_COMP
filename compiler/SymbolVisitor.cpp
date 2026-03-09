@@ -40,7 +40,7 @@ antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprConte
     if (rightConst != nullptr && (op == "/" || op == "%")) {
         int value = stoi(rightConst->getText());
         if (value == 0) {
-            cout << "Warning: division ou modulo par zéro." << endl;
+            cerr << "Warning: division ou modulo par zéro." << endl;
         }
         else {
             visit(ctx->expr(1));

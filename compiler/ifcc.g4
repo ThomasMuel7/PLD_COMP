@@ -13,7 +13,7 @@ assign_stmt : VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr ';' ;
 return_stmt : 'return' expr ';' ;
 
 expr : '(' expr ')'                                    #ParensExpr
-     | OP=('!' | '-') expr                             #UnitaryExpr
+     | OP=('!' | '-')expr                              #UnitaryExpr
      | expr OP=('*' | '/' | '%') expr                  #MultDivModExpr
      | expr OP=('+' | '-') expr                        #AddSubExpr
      | expr OP=('>' | '<' | '>=' | '<=') expr          #CompareExpr
