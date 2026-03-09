@@ -174,9 +174,9 @@ antlrcpp::Any CodeGenVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *c
     }
     else if (op == "!")
     {
-        cout << "    xor     eax, eax\n";
-        cout << "    test    edi, edi\n";
-        cout << "    sete    al\n";
+        cout << "    testl %eax, %eax\n";
+        cout << "    sete %al\n";
+        cout << "    movzbl %al, %eax\n";
     }
     return 0;
 }
