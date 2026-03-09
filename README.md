@@ -27,6 +27,7 @@ Le parser accepte actuellement des programmes de la forme :
 ```c
 int main() {
     // statements
+    return // ...
 }
 ```
 
