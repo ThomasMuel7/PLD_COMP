@@ -10,8 +10,7 @@ declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
 return_stmt : 'return' expr ';' ;
 
-expr : '--' expr                                       #DashDashtErr
-     | '(' expr ')'                                    #ParensExpr
+expr : '(' expr ')'                                    #ParensExpr
      | OP=('!' | '-')expr                              #UnitaryExpr
      | expr OP=('*' | '/' | '%') expr                  #MultDivModExpr
      | expr OP=('+' | '-') expr                        #AddSubExpr
@@ -25,6 +24,7 @@ expr : '--' expr                                       #DashDashtErr
      | VAR                                             #VarExpr
      ;
 
+DOUBLEDASH : '--' ;
 VAR : [a-zA-Z_][a-zA-Z0-9_]* ;
 INT : [0-9]+ ;
 CHAR : '\'' . '\'' ;
