@@ -19,7 +19,8 @@ antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
+antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
+{
     string varName = ctx->VAR()->getText();
     
     if (table.find(varName) == table.end()) {

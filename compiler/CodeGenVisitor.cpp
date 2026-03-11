@@ -29,7 +29,7 @@ antlrcpp::Any CodeGenVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext 
     return 0;
 }
 
-antlrcpp::Any CodeGenVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
+antlrcpp::Any CodeGenVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
 {
     visit(ctx->expr());
 
@@ -44,18 +44,21 @@ antlrcpp::Any CodeGenVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *c
         cout << "    movl " << offset << "(%rbp), %ecx\n";
         cout << "    addl %eax, %ecx\n";
         cout << "    movl %ecx, " << offset << "(%rbp)\n";
+        cout << "    movl %ecx, %eax\n";
     }
     else if (op == "-=")
     {
         cout << "    movl " << offset << "(%rbp), %ecx\n";
         cout << "    subl %eax, %ecx\n";
         cout << "    movl %ecx, " << offset << "(%rbp)\n";
+        cout << "    movl %ecx, %eax\n";
     }
     else if (op == "*=")
     {
         cout << "    movl " << offset << "(%rbp), %ecx\n";
         cout << "    imull %eax, %ecx\n";
         cout << "    movl %ecx, " << offset << "(%rbp)\n";
+        cout << "    movl %ecx, %eax\n";
     }
     else if (op == "/=")
     {
