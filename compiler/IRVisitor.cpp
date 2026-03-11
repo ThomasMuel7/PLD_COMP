@@ -4,23 +4,10 @@
 
 using namespace std;
 
-IRVisitor::IRVisitor(SymbolTable& st, int offset) : table(st), currentOffset(offset) {
-    cfg = new CFG(); 
-    current_bb = new BasicBlock(cfg, "main_entry");
-}
-
-string IRVisitor::createTemp() {
-    string tempName = "tmp" + to_string(tempCounter++);
-    currentOffset -= 4; 
-    table[tempName] = {currentOffset, true};
-    return tempName;
-}
-
 antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx) {
     for (auto stmt : ctx->stmt()) {
         visit(stmt);
     }
-
     return cfg;
 }
 
@@ -35,27 +22,21 @@ antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
     char opChar = op[0];
 
     IRInstr::Operation irOp;
-
-    
     switch (opChar) {
-      case '=':
-        irOp = IRInstr::copy;
-        break;
-      case '+':
-        irOp = IRInstr::add;
-        break;
-      case '-':
-        irOp = IRInstr::sub;
-        break;
-      case '*':
-        irOp = IRInstr::mul;
-        break;
-       default:
-        break;
+      case '=': irOp = IRInstr::copy; break;
+      case '+': irOp = IRInstr::add; break;
+      case '-': irOp = IRInstr::sub; break;
+      case '*': irOp = IRInstr::mul; break;
+      default: break;
     }
-        current_bb->add_IRInstr(irOp, Type::Int, {varName, varName, rightVar});
-
+    current_bb->add_IRInstr(irOp, Type::Int, {varName, varName, rightVar});
     return varName;
+}
+
+antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
+    string expr = visit(ctx->expr()).as<string>();
+    current_bb->add_IRInstr(IRInstr::ret, Type::Int, {expr});
+    return expr;
 }
 
 antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx) {
@@ -65,11 +46,9 @@ antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx) {
 
     IRInstr::Operation op = (ctx->OP->getText() == "+") ? IRInstr::add : IRInstr::sub;
     current_bb->add_IRInstr(op, Type::Int, {dest, left, right});
-    
     return dest;
 }
 
-// Visite des multiplications/divisions/modulos
 antlrcpp::Any IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) {
     string left = visit(ctx->expr(0)).as<string>();
     string right = visit(ctx->expr(1)).as<string>();
@@ -79,23 +58,13 @@ antlrcpp::Any IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *
     char opChar = op[0];
     IRInstr::Operation irOp;
 
-
     switch (opChar) {
-      case '*':
-        irOp = IRInstr::mul;
-        break;
-      case '/':
-        irOp = IRInstr::div;
-        break;
-      case '%':
-        irOp = IRInstr::mod;
-        break;
-       default:
-        break;
+      case '*': irOp = IRInstr::mul; break;
+      case '/': irOp = IRInstr::div; break;
+      case '%': irOp = IRInstr::mod; break;
+      default: break;
     }
-
-        current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
-    
+    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
     return dest;
 }
 
@@ -106,26 +75,72 @@ antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx) {
     } else {
         val = to_string((int)ctx->CHAR()->getText()[1]);
     }
-    
     string dest = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, Type::Int, {dest, val});
     return dest;
 }
 
-// Visite des variables utilisées dans une expression
 antlrcpp::Any IRVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
     return ctx->VAR()->getText();
 }
 
-// Visite des parenthèses
 antlrcpp::Any IRVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx) {
     return visit(ctx->expr());
 }
 
-// Visite du return
-antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
-    string res = visit(ctx->expr()).as<string>();
-    // Vous pouvez utiliser 'copy' vers une variable spéciale ou ajouter 'ret' à votre IR
-    current_bb->add_IRInstr(IRInstr::copy, Type::Int, {"return_value", res});
-    return 0;
+antlrcpp::Any IRVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx) {
+    string expr = visit(ctx->expr()).as<string>();
+    string dest = createTemp();
+    string op = ctx->OP->getText();
+    IRInstr::Operation irOp = (op == "-") ? IRInstr::neg : IRInstr::not_;
+    current_bb->add_IRInstr(irOp, Type::Int, {dest, expr});
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx) {
+    string left = visit(ctx->expr(0)).as<string>();
+    string right = visit(ctx->expr(1)).as<string>();
+    string dest = createTemp();
+    string op = ctx->OP->getText();
+    IRInstr::Operation irOp;
+    if (op == "<") irOp = IRInstr::cmp_lt;
+    else if (op == "<=") irOp = IRInstr::cmp_le;
+    else if (op == ">") irOp = IRInstr::cmp_gt;
+    else if (op == ">=") irOp = IRInstr::cmp_ge;
+    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx) {
+    string left = visit(ctx->expr(0)).as<string>();
+    string right = visit(ctx->expr(1)).as<string>();
+    string dest = createTemp();
+    string op = ctx->OP->getText();
+    IRInstr::Operation irOp = (op == "==") ? IRInstr::cmp_eq : IRInstr::cmp_ne;
+    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx) {
+    string left = visit(ctx->expr(0)).as<string>();
+    string right = visit(ctx->expr(1)).as<string>();
+    string dest = createTemp();
+    current_bb->add_IRInstr(IRInstr::and_, Type::Int, {dest, left, right});
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx) {
+    string left = visit(ctx->expr(0)).as<string>();
+    string right = visit(ctx->expr(1)).as<string>();
+    string dest = createTemp();
+    current_bb->add_IRInstr(IRInstr::or_, Type::Int, {dest, left, right});
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx) {
+    string left = visit(ctx->expr(0)).as<string>();
+    string right = visit(ctx->expr(1)).as<string>();
+    string dest = createTemp();
+    current_bb->add_IRInstr(IRInstr::xor_, Type::Int, {dest, left, right});
+    return dest;
 }
