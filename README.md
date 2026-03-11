@@ -1,6 +1,6 @@
 # PLD-Comp - Compilateur C subset (Rendu intermédiaire)
 
-Ce dépôt contient notre compilateur `ifcc` développé en C++ avec ANTLR4 dans le cadre du projet PLD-Comp (INSA Lyon, 4IF3 Hexanome 1, 2025-2026).
+Ce dépôt contient notre compilateur `ifcc` développé en C++ avec ANTLR4 dans le cadre du projet PLD-Comp (INSA Lyon, 4IF3 Hexanome 1 (Carl Habsieger, Charles Cesbron, Alexandre Didier, Hugo Marin, Thomas Muel), 2025-2026).
 
 ## 1. Configuration
 
@@ -245,4 +245,4 @@ La grammaire n'a pas de règle pour `--`; le lexer ANTLR sépare chaque `-`. Le 
 
 ### 10.2 testfiles-div-invalid-37_division_0 et testfiles-div-invalid-37_division_0
 
-Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pas sous mac (C'est probablement du au fait que notre gcc sous mac n'est pas exactement le meme que celui sous linux) 
+Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pas sous mac (C'est probablement du au fait que notre gcc sous mac n'est pas exactement le même que celui sous linux) 
