@@ -4,8 +4,6 @@
 #include "SymbolTable.h"
 #include "IR.h"
 
-static SymbolTable;
-
 class IRVisitor : public ifccBaseVisitor {
 private:
     CFG* cfg;                
@@ -18,9 +16,12 @@ public:
     IRVisitor(SymbolTable& t, int startoffset) : table(t), currentOffset(startoffset) {
         cfg = new CFG();
         current_bb = new BasicBlock(cfg, "entry");
+        cfg->entry = current_bb;
+        cfg->blocks.push_back(current_bb);
     }
 
     CFG* getCFG() { return cfg; }
+    int getCurrentOffset() const { return currentOffset; }
 
     std::string createTemp() {
         std::string name = "tmp" + std::to_string(tempCounter++);

@@ -8,27 +8,19 @@
 #include "generated/ifccParser.h"
 #include "generated/ifccBaseVisitor.h"
 
-#include "CodeGenVisitor.h"
-#include "SymbolVisitor.h"
+#include "SymbolTableVisitor.h"
+#include "IRVisitor.h"
+#include "backend.h"
 
 using namespace antlr4;
 using namespace std;
 
-int main(int argn, const char **argv)
-{
+int main(int argn, const char **argv) {
   stringstream in;
-  if (argn==2)
-  {
+  if (argn==2) {
      ifstream lecture(argv[1]);
-     if( !lecture.good() )
-     {
-         cerr<<"error: cannot read file: " << argv[1] << endl ;
-         exit(1);
-     }
      in << lecture.rdbuf();
-  }
-  else
-  {
+  } else {
       cerr << "usage: ifcc path/to/file.c" << endl ;
       exit(1);
   }
@@ -41,25 +33,32 @@ int main(int argn, const char **argv)
   tokens.fill();
 
   ifccParser parser(&tokens);
-  tree::ParseTree* tree = parser.axiom();
+  tree::ParseTree* tree = parser.prog();
 
-  if(parser.getNumberOfSyntaxErrors() != 0)
-  {
-      cerr << "error: syntax error during parsing" << endl;
+  if(parser.getNumberOfSyntaxErrors() != 0) {
+      cerr << "Erreur de syntaxe détectée lors du parsing." << endl;
       exit(1);
   }
-  
-  SymbolVisitor symbolVisitor;
-  symbolVisitor.visit(tree);
-  symbolVisitor.checkUnusedVariables();
 
-  if (symbolVisitor.hasError) {
-      cerr << "Compilation échouée suite à des erreurs sémantiques." << endl;
-      exit(1);
+  SymbolTableVisitor visitor;
+  visitor.visit(tree);
+
+  if (visitor.hasError()) {
+    return 1;
   }
-  
-  CodeGenVisitor v(symbolVisitor.table, symbolVisitor.currentOffset);
-  v.visit(tree);
+
+  SymbolTable symbolTable = visitor.getSymbolTable();
+
+  cout << ".globl main\n";
+  cout << " main: \n";
+  cout << "    pushq %rbp\n";
+  cout << "    movq %rsp, %rbp\n";
+
+  IRVisitor irVisitor(symbolTable, visitor.getCurrentOffset());
+  irVisitor.visit(tree);
+
+  x86Backend backend({irVisitor.getCFG()}, symbolTable);
+  backend.translate();
 
   return 0;
 }
