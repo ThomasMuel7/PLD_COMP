@@ -9,24 +9,22 @@ RED = "\033[91m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-TEST_SCRIPT = '../ifcc-test.py'
-TEST_FILES_DIR = '../testfiles'
+TEST_SCRIPT = "../ifcc-test.py"
+TEST_FILES_DIR = "../testfiles"
+
 
 def run_tests():
     print(f"Lancement des tests de {TEST_FILES_DIR}")
 
     # Détection de l'OS
-    cmd = ['python3', TEST_SCRIPT, TEST_FILES_DIR]
+    cmd = ["python3", TEST_SCRIPT, TEST_FILES_DIR]
 
     if platform.system() == "Darwin":  # macOS
         cmd = ["arch", "-x86_64"] + cmd
 
     # Exécution du script de test
     result = subprocess.run(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
 
     output = result.stdout
@@ -43,16 +41,16 @@ def run_tests():
             test_name = lines[i].replace("TEST-CASE:", "").strip()
 
             if i + 1 < len(lines):
-                result_line = lines[i+1]
+                result_line = lines[i + 1]
                 if "TEST OK" in result_line:
                     passed_tests += 1
                 elif "TEST FAIL" in result_line:
                     failed_tests.append(test_name)
 
     # --- Affichage des résultats ---
-    print("\n" + "="*35)
+    print("\n" + "=" * 35)
     print(f"{BOLD}       RAPPORT DE TEST{RESET}")
-    print("="*35)
+    print("=" * 35)
 
     if total_tests > 0:
         pass_percentage = (passed_tests / total_tests) * 100

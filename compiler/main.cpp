@@ -8,23 +8,27 @@
 #include "generated/ifccParser.h"
 #include "generated/ifccBaseVisitor.h"
 
-#include "SymbolTableVisitor.h"
+#include "SymbolVisitor.h"
 #include "IRVisitor.h"
 #include "backend.h"
 
 using namespace antlr4;
 using namespace std;
 
-int main(int argn, const char **argv) {
+int main(int argn, const char **argv)
+{
   stringstream in;
-  if (argn==2) {
-     ifstream lecture(argv[1]);
-     in << lecture.rdbuf();
-  } else {
-      cerr << "usage: ifcc path/to/file.c" << endl ;
-      exit(1);
+  if (argn == 2)
+  {
+    ifstream lecture(argv[1]);
+    in << lecture.rdbuf();
   }
-  
+  else
+  {
+    cerr << "usage: ifcc path/to/file.c" << endl;
+    exit(1);
+  }
+
   ANTLRInputStream input(in.str());
 
   ifccLexer lexer(&input);
@@ -33,31 +37,27 @@ int main(int argn, const char **argv) {
   tokens.fill();
 
   ifccParser parser(&tokens);
-  tree::ParseTree* tree = parser.prog();
+  tree::ParseTree *tree = parser.prog();
 
-  if(parser.getNumberOfSyntaxErrors() != 0) {
-      cerr << "Erreur de syntaxe détectée lors du parsing." << endl;
-      exit(1);
+  if (parser.getNumberOfSyntaxErrors() != 0)
+  {
+    cerr << "Erreur de syntaxe détectée lors du parsing." << endl;
+    exit(1);
   }
 
-  SymbolTableVisitor visitor;
+  SymbolVisitor visitor;
   visitor.visit(tree);
 
-  if (visitor.hasError()) {
+  if (visitor.hasError)
+  {
+    cerr << "Erreur de sémantique détectée lors de la visite du symbole." << endl;
     return 1;
   }
 
-  SymbolTable symbolTable = visitor.getSymbolTable();
-
-  cout << ".globl main\n";
-  cout << " main: \n";
-  cout << "    pushq %rbp\n";
-  cout << "    movq %rsp, %rbp\n";
-
-  IRVisitor irVisitor(symbolTable, visitor.getCurrentOffset());
+  IRVisitor irVisitor(visitor.table, visitor.currentOffset);
   irVisitor.visit(tree);
 
-  x86Backend backend({irVisitor.getCFG()}, symbolTable);
+  x86Backend backend({irVisitor.getCFG()}, visitor.table);
   backend.translate();
 
   return 0;

@@ -2,26 +2,14 @@
 #include "antlr4-runtime.h"
 #include "generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
-#include "IR.h"
-#include "BasicBlock.h"
-#include "CFG.h"
 
-class IRVisitor : public ifccBaseVisitor
-{
+class CodeGenVisitor : public ifccBaseVisitor {
 private:
-    CFG *cfg;
-    BasicBlock *current_bb;
-    SymbolTable &table;
+    SymbolTable table;
     int currentOffset;
-    int tempCounter = 0;
 
 public:
-    IRVisitor(SymbolTable &t, int startoffset);
-
-    CFG *getCFG() { return cfg; }
-    int getCurrentOffset() const { return currentOffset; }
-
-    std::string createTemp();
+    CodeGenVisitor(SymbolTable t, int startoffset) : table(t), currentOffset(startoffset) {}
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;
@@ -38,4 +26,13 @@ public:
     virtual antlrcpp::Any visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx) override;
     virtual antlrcpp::Any visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx) override;
     virtual antlrcpp::Any visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx) override;
+
+    int getNewTempOffset() {
+        currentOffset -= 4;
+        return currentOffset;
+    }
+
+    void freeTempOffset() {
+        currentOffset += 4;
+    }
 };

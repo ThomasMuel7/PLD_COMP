@@ -3,7 +3,8 @@
 #include "generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
 
-class SymbolVisitor : public ifccBaseVisitor {
+class SymbolVisitor : public ifccBaseVisitor
+{
 public:
     SymbolTable table;
     int currentOffset = 0;

@@ -4,14 +4,19 @@
 
 using namespace std;
 
-antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
-    for (auto var : ctx->VAR()) {
+antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
+{
+    for (auto var : ctx->VAR())
+    {
         string varName = var->getText();
-            
-        if (table.find(varName) != table.end()) {
+
+        if (table.find(varName) != table.end())
+        {
             cerr << "Erreur: la variable '" << varName << "' est déjà déclarée." << endl;
             hasError = true;
-        } else {
+        }
+        else
+        {
             currentOffset -= 4;
             table[varName] = {currentOffset, false};
         }
@@ -19,53 +24,69 @@ antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
+antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
+{
     string varName = ctx->VAR()->getText();
-    
-    if (table.find(varName) == table.end()) {
+
+    if (table.find(varName) == table.end())
+    {
         cerr << "Erreur: la variable '" << varName << "' n'est pas déclarée." << endl;
         hasError = true;
-    } else {
+    }
+    else
+    {
         table[varName].isUsed = true;
     }
-    
-    visit(ctx->expr()); 
+
+    visit(ctx->expr());
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) {
+antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
+{
     visit(ctx->expr(0));
-    auto rightConst = dynamic_cast<ifccParser::ConstExprContext*>(ctx->expr(1));
+    auto rightConst = dynamic_cast<ifccParser::ConstExprContext *>(ctx->expr(1));
     string op = ctx->OP->getText();
-    if (rightConst != nullptr && (op == "/" || op == "%")) {
+    if (rightConst != nullptr && (op == "/" || op == "%"))
+    {
         int value = stoi(rightConst->getText());
-        if (value == 0) {
+        if (value == 0)
+        {
             cout << "Warning: division ou modulo par zéro." << endl;
         }
-        else {
+        else
+        {
             visit(ctx->expr(1));
         }
     }
-    else {
+    else
+    {
         visit(ctx->expr(1));
     }
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
+antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx)
+{
     string varName = ctx->VAR()->getText();
-    if (table.find(varName) == table.end()) {
+    if (table.find(varName) == table.end())
+    {
         cerr << "Erreur: la variable '" << varName << "' utilisée dans l'expression n'est pas déclarée." << endl;
         hasError = true;
-    } else {
+    }
+    else
+    {
         table[varName].isUsed = true;
     }
     return 0;
 }
 
-void SymbolVisitor::checkUnusedVariables() {
-    for (const auto& pair : table) {
-        if (!pair.second.isUsed) {
+void SymbolVisitor::checkUnusedVariables()
+{
+    for (const auto &pair : table)
+    {
+        if (!pair.second.isUsed)
+        {
             cerr << "Warning: la variable '" << pair.first << "' est déclarée mais non utilisée." << endl;
         }
     }
