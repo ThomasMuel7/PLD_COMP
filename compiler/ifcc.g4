@@ -10,7 +10,8 @@ declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
 return_stmt : 'return' expr ';' ;
 
-expr : '(' expr ')'                                    #ParensExpr
+expr : '--' expr                                       #DashDashtErr
+     | '(' expr ')'                                    #ParensExpr
      | OP=('!' | '-')expr                              #UnitaryExpr
      | expr OP=('*' | '/' | '%') expr                  #MultDivModExpr
      | expr OP=('+' | '-') expr                        #AddSubExpr
