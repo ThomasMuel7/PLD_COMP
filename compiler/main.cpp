@@ -3,12 +3,13 @@
 #include <sstream>
 #include <cstdlib>
 
+#include "IRVisitor.h"
 #include "antlr4-runtime.h"
 #include "generated/ifccLexer.h"
 #include "generated/ifccParser.h"
 #include "generated/ifccBaseVisitor.h"
 
-#include "CodeGenVisitor.h"
+//#include "CodeGenVisitor.h"
 #include "SymbolVisitor.h"
 
 using namespace antlr4;
@@ -58,7 +59,7 @@ int main(int argn, const char **argv)
       exit(1);
   }
   
-  CodeGenVisitor v(symbolVisitor.table, symbolVisitor.currentOffset);
+  IRVisitor v(symbolVisitor.table, symbolVisitor.currentOffset);
   v.visit(tree);
 
   return 0;
