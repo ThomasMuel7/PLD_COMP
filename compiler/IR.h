@@ -4,9 +4,15 @@
 #include <string>
 #include <iostream>
 #include <initializer_list>
+#include "CFG.h"
+
+using namespace std;
 
 class BasicBlock;
-class CFG;
+
+// Declarations from the parser -- replace with your own
+//#include "type.h"
+//#include "symbole.h"
 class DefFonction;
 
 using namespace std;

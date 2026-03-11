@@ -3,6 +3,8 @@
 #include "generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
 #include "IR.h"
+#include "BasicBlock.h"
+
 
 class IRVisitor : public ifccBaseVisitor {
 private:
@@ -13,22 +15,12 @@ private:
     int tempCounter = 0;     
 
 public:
-    IRVisitor(SymbolTable& t, int startoffset) : table(t), currentOffset(startoffset) {
-        cfg = new CFG();
-        current_bb = new BasicBlock(cfg, "entry");
-        cfg->entry = current_bb;
-        cfg->blocks.push_back(current_bb);
-    }
+    IRVisitor(SymbolTable& t, int startoffset);
 
     CFG* getCFG() { return cfg; }
     int getCurrentOffset() const { return currentOffset; }
 
-    std::string createTemp() {
-        std::string name = "tmp" + std::to_string(tempCounter++);
-        currentOffset -= 4; 
-        table[name] = {currentOffset, true};
-        return name;
-    }
+    std::string createTemp();
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;

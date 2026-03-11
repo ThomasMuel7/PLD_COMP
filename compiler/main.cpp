@@ -3,12 +3,14 @@
 #include <sstream>
 #include <cstdlib>
 
+#include "IRVisitor.h"
 #include "antlr4-runtime.h"
 #include "generated/ifccLexer.h"
 #include "generated/ifccParser.h"
 #include "generated/ifccBaseVisitor.h"
 
-#include "SymbolTableVisitor.h"
+//#include "CodeGenVisitor.h"
+#include "SymbolVisitor.h"
 #include "IRVisitor.h"
 #include "backend.h"
 
@@ -49,16 +51,11 @@ int main(int argn, const char **argv) {
 
   SymbolTable symbolTable = visitor.getSymbolTable();
 
-  cout << ".globl main\n";
-  cout << " main: \n";
-  cout << "    pushq %rbp\n";
-  cout << "    movq %rsp, %rbp\n";
-
-  IRVisitor irVisitor(symbolTable, visitor.getCurrentOffset());
-  irVisitor.visit(tree);
+  IRVisitor v(symbolVisitor.table, symbolVisitor.currentOffset);
+  v.visit(tree);
 
   x86Backend backend({irVisitor.getCFG()}, symbolTable);
   backend.translate();
-
+  
   return 0;
 }
