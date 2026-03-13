@@ -4,11 +4,9 @@ axiom : prog EOF ;
 
 prog : 'int' 'main' '(' ')' '{' stmt* '}' ;
 
-stmt : declare_stmt | assign_stmt | return_stmt ;
+stmt : declare_stmt | return_stmt | expr ';';
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
-
-assign_stmt : VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr ';' ;
 
 return_stmt : 'return' expr ';' ;
 
@@ -21,10 +19,12 @@ expr : '(' expr ')'                                    #ParensExpr
      | expr '&' expr                                   #LogicBitANDExpr
      | expr '^' expr                                   #LogicBitXORExpr
      | expr '|' expr                                   #LogicBitORExpr
+     | VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr   #AssignExpr
      | (INT | CHAR )                                   #ConstExpr
      | VAR                                             #VarExpr
      ;
 
+DOUBLEDASH : '--' ;
 VAR : [a-zA-Z_][a-zA-Z0-9_]* ;
 INT : [0-9]+ ;
 CHAR : '\'' . '\'' ;

@@ -35,7 +35,7 @@ IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
+antlrcpp::Any IRVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
 {
     string rightVar = std::any_cast<string>(visit(ctx->expr()));
     string varName = ctx->VAR()->getText();
