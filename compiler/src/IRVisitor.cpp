@@ -22,15 +22,20 @@ string IRVisitor::createTemp()
 
 antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx)
 {
+    visit(ctx->bloc());
+    return cfg;
+}
+
+antlrcpp::Any IRVisitor::visitBloc(ifccParser::BlocContext *ctx)
+{
     for (auto stmt : ctx->stmt())
     {
         visit(stmt);
     }
-    return cfg;
+    return 0;
 }
 
-antlrcpp::Any
-IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
+antlrcpp::Any IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
 {
     return 0;
 }

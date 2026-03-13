@@ -2,9 +2,11 @@ grammar ifcc;
 
 axiom : prog EOF ;
 
-prog : 'int' 'main' '(' ')' '{' stmt* '}' ;
+prog : 'int' 'main' '(' ')' bloc ;
 
-stmt : declare_stmt | return_stmt | expr ';';
+bloc : '{'stmt*'}' ;
+
+stmt : declare_stmt | return_stmt | expr ';' | bloc ;
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
