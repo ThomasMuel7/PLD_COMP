@@ -36,7 +36,7 @@ int main(int argn, const char **argv) {
   tokens.fill();
 
   ifccParser parser(&tokens);
-  tree::ParseTree *tree = parser.prog();
+  ifccParser::AxiomContext* tree = parser.axiom();
 
   if (parser.getNumberOfSyntaxErrors() != 0)
   {
@@ -45,7 +45,7 @@ int main(int argn, const char **argv) {
   }
 
   SymbolVisitor visitor;
-  visitor.visit(tree);
+  visitor.visit(tree->prog());
 
   if (visitor.hasError)
   {
@@ -54,7 +54,7 @@ int main(int argn, const char **argv) {
   }
 
   IRVisitor irVisitor(visitor.table, visitor.currentOffset);
-  irVisitor.visit(tree);
+  irVisitor.visit(tree->prog());
 
   x86Backend backend({irVisitor.getCFG()}, visitor.table);
   backend.translate();
