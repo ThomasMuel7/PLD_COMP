@@ -4,22 +4,6 @@
 #include "SymbolTable.h"
 #include "IR.h"
 #include "BasicBlock.h"
-<<<<<<< HEAD
-
-
-class IRVisitor : public ifccBaseVisitor {
-private:
-    CFG* cfg;                
-    BasicBlock* current_bb;  
-    SymbolTable& table;      
-    int currentOffset;       
-    int tempCounter = 0;     
-
-public:
-    IRVisitor(SymbolTable& t, int startoffset);
-
-    CFG* getCFG() { return cfg; }
-=======
 #include "CFG.h"
 
 class IRVisitor : public ifccBaseVisitor
@@ -35,7 +19,6 @@ public:
     IRVisitor(SymbolTable &t, int startoffset);
 
     CFG *getCFG() { return cfg; }
->>>>>>> 6e2b3bbbfee102d95899e4843c55c1b244133002
     int getCurrentOffset() const { return currentOffset; }
 
     std::string createTemp();
