@@ -1,6 +1,6 @@
 #pragma once
 #include "antlr4-runtime.h"
-#include "generated/ifccBaseVisitor.h"
+#include "../generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
 
 class SymbolVisitor : public ifccBaseVisitor {

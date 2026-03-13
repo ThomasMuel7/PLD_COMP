@@ -3,15 +3,14 @@
 #include <sstream>
 #include <cstdlib>
 
-#include "IRVisitor.h"
 #include "antlr4-runtime.h"
 #include "generated/ifccLexer.h"
 #include "generated/ifccParser.h"
-#include "generated/ifccBaseVisitor.h"
 
-#include "SymbolVisitor.h"
-#include "IRVisitor.h"
-#include "backend.h"
+#include "src/IRVisitor.h"
+#include "src/SymbolVisitor.h"
+#include "src/IRVisitor.h"
+#include "src/backend.h"
 
 using namespace antlr4;
 using namespace std;
