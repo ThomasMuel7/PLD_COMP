@@ -108,17 +108,20 @@ IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) {
   return dest;
 }
 
-antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx) {
-  string val;
-  if (ctx->INT()) {
-    val = ctx->INT()->getText();
-  } else {
-    val = to_string((int)ctx->CHAR()->getText()[1]);
-  }
-
-  string dest = createTemp();
-  current_bb->add_IRInstr(IRInstr::ldconst, Type::Int, {dest, val});
-  return dest;
+antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx)
+{
+    string val;
+    if (ctx->INT())
+    {
+        val = ctx->INT()->getText();
+    }
+    else
+    {
+        val = ctx->CHAR()->getText();
+    }
+    string dest = createTemp();
+    current_bb->add_IRInstr(IRInstr::ldconst, {dest, val});
+    return dest;
 }
 
 antlrcpp::Any IRVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
