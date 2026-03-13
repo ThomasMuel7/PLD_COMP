@@ -11,6 +11,7 @@ using namespace std;
 class BasicBlock;
 
 // Declarations from the parser -- replace with your own
+<<<<<<< HEAD
 //#include "type.h"
 //#include "symbole.h"
 class DefFonction;
@@ -22,6 +23,19 @@ enum class Type { Int, Char };
 class IRInstr {
 public:
     typedef enum {
+=======
+// #include "type.h"
+// #include "symbole.h"
+class DefFonction;
+
+class IRInstr
+{
+
+public:
+    /** The instructions themselves -- feel free to subclass instead */
+    typedef enum
+    {
+>>>>>>> 6e2b3bbbfee102d95899e4843c55c1b244133002
         ldconst,
         copy,
         add,
@@ -31,7 +45,11 @@ public:
         mod,
         rmem,
         wmem,
+<<<<<<< HEAD
         call, 
+=======
+        call,
+>>>>>>> 6e2b3bbbfee102d95899e4843c55c1b244133002
         cmp_eq,
         cmp_lt,
         cmp_le,
@@ -46,6 +64,7 @@ public:
         ret
     } Operation;
 
+<<<<<<< HEAD
     IRInstr(BasicBlock* bb_, Operation op, Type t, vector<string> params);
     void gen_asm(ostream &o); 
     
@@ -76,3 +95,20 @@ public:
     BasicBlock* entry;
     vector<BasicBlock*> blocks;
 };
+=======
+    /**  constructor */
+    IRInstr(BasicBlock *bb_, Operation op, vector<string> params);
+    BasicBlock *getBasicBlock() const { return bb; }
+    Operation getOp() const { return op; }
+    vector<string> getParams() const { return params; }
+
+    /** Actual code generation */
+    // void gen_asm(ostream &o); /**< x86 assembly code generation for this IR instruction */
+
+private:
+    BasicBlock *bb; /**< The BB this instruction belongs to, which provides a pointer to the CFG this instruction belong to */
+    Operation op;
+    vector<string> params; /**< For 3-op instrs: d, x, y; for ldconst: d, c;  For call: label, d, params;  for wmem and rmem: choose yourself */
+                           // if you subclass IRInstr, each IRInstr subclass has its parameters and the previous (very important) comment becomes useless: it would be a better design.
+};
+>>>>>>> 6e2b3bbbfee102d95899e4843c55c1b244133002

@@ -22,6 +22,10 @@ OBJECTS=build/ifccBaseVisitor.o \
 	build/CFG.o \
 	build/IRVisitor.o \
 	build/SymbolVisitor.o \
+<<<<<<< HEAD
+=======
+	build/backend.o \
+>>>>>>> 6e2b3bbbfee102d95899e4843c55c1b244133002
 	build/main.o 
 
 ifcc: $(OBJECTS)

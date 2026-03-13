@@ -5,12 +5,11 @@
 
 using namespace std;
 
-IRVisitor::IRVisitor(SymbolTable &st, int offset)
-    : table(st), currentOffset(offset)
+IRVisitor::IRVisitor(SymbolTable &t, int startoffset) : table(t), currentOffset(startoffset)
 {
     cfg = new CFG();
-    current_bb = new BasicBlock(cfg, "main_entry");
-    cfg->set_entry(current_bb);
+    current_bb = new BasicBlock(cfg, "entry");
+    cfg->entry = current_bb;
 }
 
 string IRVisitor::createTemp()
@@ -27,7 +26,6 @@ antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx)
     {
         visit(stmt);
     }
-
     return cfg;
 }
 
@@ -42,36 +40,31 @@ antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
     string rightVar = std::any_cast<string>(visit(ctx->expr()));
     string varName = ctx->VAR()->getText();
     string op = ctx->OP->getText();
-    char opChar = op[0];
 
-    IRInstr::Operation irOp;
-
-    switch (opChar)
+    if (op == "=")
     {
-    case '=':
-        irOp = IRInstr::copy;
-        break;
-    case '+':
-        irOp = IRInstr::add;
-        break;
-    case '-':
-        irOp = IRInstr::sub;
-        break;
-    case '*':
-        irOp = IRInstr::mul;
-        break;
-    default:
-        break;
+        current_bb->add_IRInstr(IRInstr::copy, {varName, rightVar});
     }
-    current_bb->add_IRInstr(irOp, Type::Int, {varName, varName, rightVar});
-
+    else
+    {
+        IRInstr::Operation irOp;
+        if (op == "+=")
+            irOp = IRInstr::add;
+        else if (op == "-=")
+            irOp = IRInstr::sub;
+        else if (op == "*=")
+            irOp = IRInstr::mul;
+        else if (op == "/=")
+            irOp = IRInstr::div;
+        current_bb->add_IRInstr(irOp, {varName, varName, rightVar});
+    }
     return varName;
 }
 
 antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx)
 {
-    string expr = visit(ctx->expr()).as<string>();
-    current_bb->add_IRInstr(IRInstr::ret, Type::Int, {expr});
+    string expr = std::any_cast<string>(visit(ctx->expr()));
+    current_bb->add_IRInstr(IRInstr::ret, {expr});
     return expr;
 }
 
@@ -81,15 +74,12 @@ antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx)
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
 
-    IRInstr::Operation op =
-        (ctx->OP->getText() == "+") ? IRInstr::add : IRInstr::sub;
-    current_bb->add_IRInstr(op, Type::Int, {dest, left, right});
-
+    IRInstr::Operation op = (ctx->OP->getText() == "+") ? IRInstr::add : IRInstr::sub;
+    current_bb->add_IRInstr(op, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any
-IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
+antlrcpp::Any IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
 {
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
@@ -113,9 +103,7 @@ IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
     default:
         break;
     }
-
-    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
-
+    current_bb->add_IRInstr(irOp, {dest, left, right});
     return dest;
 }
 
@@ -142,32 +130,17 @@ antlrcpp::Any IRVisitor::visitVarExpr(ifccParser::VarExprContext *ctx)
 
 antlrcpp::Any IRVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx)
 {
-    return visit(ctx->expr());
-}
-
-antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx)
-{
-    string res = std::any_cast<string>(visit(ctx->expr()));
-    // Vous pouvez utiliser 'copy' vers une variable spéciale ou ajouter 'ret' à
-    // votre IR
-    current_bb->add_IRInstr(IRInstr::copy, Type::Int, {"return_value", res});
-    return 0;
+    return std::any_cast<string>(visit(ctx->expr()));
 }
 
 antlrcpp::Any IRVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx)
 {
-    string operand = std::any_cast<string>(visit(ctx->expr()));
+    string expr = std::any_cast<string>(visit(ctx->expr()));
     string dest = createTemp();
+    string op = ctx->OP->getText();
 
-    if (ctx->OP->getText() == "-")
-    {
-        current_bb->add_IRInstr(IRInstr::sub, Type::Int, {dest, "0", operand});
-    }
-    else if (ctx->OP->getText() == "!")
-    {
-        current_bb->add_IRInstr(IRInstr::neg, Type::Int, {dest, operand, "1"});
-    }
-
+    IRInstr::Operation irOp = (op == "-") ? IRInstr::neg : IRInstr::not_;
+    current_bb->add_IRInstr(irOp, {dest, expr});
     return dest;
 }
 
@@ -176,28 +149,19 @@ antlrcpp::Any IRVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx)
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
-
     string op = ctx->OP->getText();
+
     IRInstr::Operation irOp;
-
     if (op == "<")
-    {
         irOp = IRInstr::cmp_lt;
-    }
-    else if (op == ">")
-    {
-        irOp = IRInstr::cmp_gt;
-    }
     else if (op == "<=")
-    {
         irOp = IRInstr::cmp_le;
-    }
+    else if (op == ">")
+        irOp = IRInstr::cmp_gt;
     else if (op == ">=")
-    {
         irOp = IRInstr::cmp_ge;
-    }
 
-    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
+    current_bb->add_IRInstr(irOp, {dest, left, right});
     return dest;
 }
 
@@ -206,52 +170,36 @@ antlrcpp::Any IRVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx)
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
-
     string op = ctx->OP->getText();
-    IRInstr::Operation irOp;
 
-    if (op == "==")
-    {
-        irOp = IRInstr::eq;
-    }
-    else if (op == "!=")
-    {
-        irOp = IRInstr::neq;
-    }
-
-    current_bb->add_IRInstr(irOp, Type::Int, {dest, left, right});
+    IRInstr::Operation irOp = (op == "==") ? IRInstr::cmp_eq : IRInstr::cmp_ne;
+    current_bb->add_IRInstr(irOp, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any
-IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx)
+antlrcpp::Any IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx)
 {
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
-
-    current_bb->add_IRInstr(IRInstr::and_op, Type::Int, {dest, left, right});
+    current_bb->add_IRInstr(IRInstr::and_, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any
-IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx)
+antlrcpp::Any IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx)
 {
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
-
-    current_bb->add_IRInstr(IRInstr::or_op, Type::Int, {dest, left, right});
+    current_bb->add_IRInstr(IRInstr::or_, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any
-IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx)
+antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx)
 {
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
-
-    current_bb->add_IRInstr(IRInstr::xor_op, Type::Int, {dest, left, right});
+    current_bb->add_IRInstr(IRInstr::xor_, {dest, left, right});
     return dest;
 }
