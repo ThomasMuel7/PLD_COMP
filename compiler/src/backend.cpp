@@ -9,8 +9,13 @@ x86Backend::x86Backend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable
 string x86Backend::generatePrologue()
 {
   string code = "";
-  code += ".globl main\n";
-  cout << " main: \n";
+  #ifdef __APPLE__
+    code += ".globl _main\n";
+    cout << " _main: \n";
+  #else
+    code += ".globl main\n";
+    cout << " main: \n";
+  #endif
   cout << "    pushq %rbp\n";
   cout << "    movq %rsp, %rbp\n";
   return code;
