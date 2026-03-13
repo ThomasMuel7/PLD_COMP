@@ -6,6 +6,16 @@ using namespace std;
 x86Backend::x86Backend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
+string x86Backend::generatePrologue()
+{
+  string code = "";
+  code += ".globl main\n";
+  cout << " main: \n";
+  cout << "    pushq %rbp\n";
+  cout << "    movq %rsp, %rbp\n";
+  return code;
+}
+
 string x86Backend::getOffset(const string &varName)
 {
   auto it = symbolTable.find(varName);
@@ -30,10 +40,7 @@ string x86Backend::saveResultEax(IRInstr *instr)
 
 void x86Backend::translate()
 {
-  cout << ".globl main\n";
-  cout << " main: \n";
-  cout << "    pushq %rbp\n";
-  cout << "    movq %rsp, %rbp\n";
+  cout << generatePrologue();
   for (CFG *cfg : cfgs)
   {
     for (BasicBlock *bb : cfg->blocks)

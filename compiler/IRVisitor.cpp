@@ -114,7 +114,7 @@ antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx)
     }
     else
     {
-        val = to_string((int)ctx->CHAR()->getText()[1]);
+        val = ctx->CHAR()->getText();
     }
     string dest = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {dest, val});

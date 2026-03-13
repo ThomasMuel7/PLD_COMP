@@ -34,4 +34,5 @@ private:
   std::string loadBinaryOperands(IRInstr *instr);
   std::string saveResultEax(IRInstr *instr);
   std::string generate(IRInstr *instr) override;
+  std::string generatePrologue();
 };
