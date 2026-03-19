@@ -147,6 +147,21 @@ string x86Backend::generate(IRInstr *instr)
     code += "    movzbl %al, %eax\n";
     code += saveResultEax(instr);
     break;
+  case IRInstr::call: {
+    const vector<string> &p = instr->getParams();
+    string funcName = p[0];
+    string dest = p[1];
+    int argc = (int)p.size() - 2;
+    static const vector<string> argRegs = {
+      "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"
+    };
+    for (int i = 0; i < argc; i++) {
+      code += "    movl " + getOffset(p[i + 2]) + ", " + argRegs[i] + "\n";
+    }
+    code += "    call " + funcName + "\n";
+    code += "    movl %eax, " + getOffset(dest) + "\n";
+    break;
+  }
   case IRInstr::ret:
     code += "    movl " + getOffset(instr->getParams()[0]) + ", %eax\n";
     code += "    popq %rbp\n";

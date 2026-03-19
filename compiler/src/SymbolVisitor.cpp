@@ -87,3 +87,26 @@ antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprConte
     }
     return 0;
 }
+antlrcpp::Any SymbolVisitor::visitCallExpr(ifccParser::CallExprContext *ctx) {
+    string funcName = ctx->VAR()->getText();
+    int argc = (int)ctx->expr().size();
+
+    if (funcName == "putchar" && argc != 1) {
+        cerr << "Erreur: putchar attend exactement 1 argument." << endl;
+        hasError = true;
+    }
+    else if (funcName == "getchar" && argc != 0) {
+        cerr << "Erreur: getchar n'attend aucun argument." << endl;
+        hasError = true;
+    }
+    else if (argc > 6) {
+        cerr << "Erreur: plus de 6 arguments non supportés." << endl;
+        hasError = true;
+    }
+
+    for (auto argCtx : ctx->expr()) {
+        visit(argCtx);
+    }
+
+    return 0;
+}

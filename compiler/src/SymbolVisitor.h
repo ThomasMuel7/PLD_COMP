@@ -22,6 +22,8 @@ public:
     virtual antlrcpp::Any visitAssignExpr(ifccParser::AssignExprContext *ctx) override;
     virtual antlrcpp::Any visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) override;
     virtual antlrcpp::Any visitVarExpr(ifccParser::VarExprContext *ctx) override;
+    virtual antlrcpp::Any visitCallExpr(ifccParser::CallExprContext *ctx) override;
+
 
     void checkUnusedVariables();
 };

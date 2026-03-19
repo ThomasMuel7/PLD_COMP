@@ -6,7 +6,9 @@ prog : 'int' 'main' '(' ')' block;
 
 block : '{'stmt*'}' ;
 
-stmt : declare_stmt | return_stmt | expr ';' | block ;
+stmt : declare_stmt | return_stmt | expr_stmt | block ;
+
+expr_stmt : expr ';' ;
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
@@ -24,6 +26,7 @@ expr : '(' expr ')'                                    #ParensExpr
      | VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr   #AssignExpr
      | (INT | CHAR )                                   #ConstExpr
      | VAR                                             #VarExpr
+     | VAR '(' (expr (',' expr)*)? ')'                 #CallExpr
      ;
 
 DOUBLEDASH : '--' ;

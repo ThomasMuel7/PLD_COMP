@@ -173,3 +173,26 @@ antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext
     current_bb->add_IRInstr(IRInstr::xor_, {dest, left, right});
     return dest;
 }
+
+antlrcpp::Any IRVisitor::visitExpr_stmt(ifccParser::Expr_stmtContext *ctx) {
+    visit(ctx->expr());
+    return 0;
+}
+
+antlrcpp::Any IRVisitor::visitCallExpr(ifccParser::CallExprContext *ctx) {
+    string funcName = ctx->VAR()->getText();
+
+    vector<string> params;
+    string dest = createTemp();
+
+    params.push_back(funcName);
+    params.push_back(dest);
+
+    for (auto argCtx : ctx->expr()) {
+        string argVar = std::any_cast<string>(visit(argCtx));
+        params.push_back(argVar);
+    }
+    int argc = (int)ctx->expr().size();
+    current_bb->add_IRInstr(IRInstr::call, params);
+    return dest;
+}
