@@ -6,21 +6,6 @@ using namespace std;
 x86Backend::x86Backend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
-string x86Backend::generatePrologue()
-{
-  string code = "";
-  #ifdef __APPLE__
-    code += ".globl _main\n";
-    cout << " _main: \n";
-  #else
-    code += ".globl main\n";
-    cout << " main: \n";
-  #endif
-  cout << "    pushq %rbp\n";
-  cout << "    movq %rsp, %rbp\n";
-  return code;
-}
-
 string x86Backend::getOffset(const string &varName)
 {
   auto it = symbolTable.find(varName);
@@ -45,14 +30,47 @@ string x86Backend::saveResultEax(IRInstr *instr)
 
 void x86Backend::translate()
 {
-  cout << generatePrologue();
+  #ifdef __APPLE__
+    cout << ".globl _main\n";
+  #else
+    cout << ".globl main\n";
+  #endif
+
   for (CFG *cfg : cfgs)
   {
     for (BasicBlock *bb : cfg->blocks)
     {
-      for (IRInstr *instr : bb->instrs)
+      if (bb->label == "prologue") {
+        #ifdef __APPLE__
+          cout << " _main:\n";
+        #else
+          cout << " main:\n";
+        #endif
+        cout << "    pushq %rbp\n";
+        cout << "    movq %rsp, %rbp\n";
+      } 
+      else if (bb->label == "epilogue") {
+        cout << bb->label << ":\n";
+        cout << "    popq %rbp\n";
+        cout << "    ret\n";
+        continue;
+      } 
+      else {
+        cout << bb->label << ":\n";
+        for (IRInstr *instr : bb->instrs)
+        {
+          cout << generate(instr);
+        }
+      }
+      if (bb->exit_true != nullptr && bb->exit_false != nullptr)
       {
-        cout << generate(instr);
+        cout << "    cmpl $0, " << getOffset(bb->test_var_name) << "\n";
+        cout << "    je " << bb->exit_false->label << "\n";
+        cout << "    jmp " << bb->exit_true->label << "\n";
+      }
+      else if (bb->exit_true != nullptr)
+      {
+        cout << "    jmp " << bb->exit_true->label << "\n";
       }
     }
   }
@@ -149,8 +167,6 @@ string x86Backend::generate(IRInstr *instr)
     break;
   case IRInstr::ret:
     code += "    movl " + getOffset(instr->getParams()[0]) + ", %eax\n";
-    code += "    popq %rbp\n";
-    code += "    ret\n";
     break;
   default:
     break;

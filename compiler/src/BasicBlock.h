@@ -37,7 +37,7 @@ public:
 
 	void add_IRInstr(IRInstr::Operation op, std::vector<std::string> params);
 
-	void add_exit(BasicBlock *exit_true, BasicBlock *exit_false);
+	void add_exit(BasicBlock *exit_true, BasicBlock *exit_false = nullptr);
 
 	// No encapsulation whatsoever here. Feel free to do better.
 	BasicBlock *exit_true;		   /**< pointer to the next basic block, true branch. If nullptr, return from procedure */
@@ -47,5 +47,4 @@ public:
 	std::vector<IRInstr *> instrs; /** < the instructions themselves. */
 	std::string test_var_name;	   /** < when generating IR code for an if(expr) or while(expr) etc,
 														store here the name of the variable that holds the value of expr */
-protected:
 };

@@ -5,13 +5,6 @@
 
 using namespace std;
 
-IRVisitor::IRVisitor(SymbolTable &t, int startoffset) : table(t), currentOffset(startoffset) {
-    cfg = new CFG();
-    current_bb = new BasicBlock(cfg, "entry");
-    cfg->entry = current_bb;
-    scopeTable.push_back(map<string, string>());
-}
-
 string IRVisitor::resolveVariable(const string& originalName) {
     for (int i = scopeTable.size() - 1; i >= 0; i--) {
         if (scopeTable[i].find(originalName) != scopeTable[i].end()) {
@@ -28,8 +21,31 @@ string IRVisitor::createTemp() {
     return tempName;
 }
 
+string IRVisitor::gen_unique_id(antlr4::ParserRuleContext *ctx){
+        return std::to_string(ctx->start->getLine()) + "_" + std::to_string(ctx->start->getCharPositionInLine());
+    }
+
+IRVisitor::IRVisitor(SymbolTable &t, int startoffset) : table(t), currentOffset(startoffset) {
+    cfg = new CFG();
+    BasicBlock* bb_prologue = new BasicBlock(cfg, "prologue");
+    bb_epilogue = new BasicBlock(cfg, "epilogue");
+    BasicBlock* bb_body = new BasicBlock(cfg, "body");
+    
+    cfg->entry = bb_prologue;
+    bb_prologue->add_exit(bb_body);
+    
+    current_bb = bb_body;
+    scopeTable.push_back(map<string, string>());
+}
+
 antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx) {
     visit(ctx->block());
+    if (current_bb->exit_true == nullptr) {
+        string dest = createTemp();
+        current_bb->add_IRInstr(IRInstr::ldconst, {dest, "0"});
+        current_bb->add_IRInstr(IRInstr::ret, {dest});
+        current_bb->add_exit(bb_epilogue);
+    }
     return cfg;
 }
 
@@ -69,12 +85,6 @@ antlrcpp::Any IRVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx) {
         current_bb->add_IRInstr(irOp, {uniqueName, uniqueName, rightVar});
     }
     return uniqueName;
-}
-
-antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
-    string expr = std::any_cast<string>(visit(ctx->expr()));
-    current_bb->add_IRInstr(IRInstr::ret, {expr});
-    return expr;
 }
 
 antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx) {
@@ -172,4 +182,66 @@ antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext
     string dest = createTemp();
     current_bb->add_IRInstr(IRInstr::xor_, {dest, left, right});
     return dest;
+}
+
+antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
+    string expr = std::any_cast<string>(visit(ctx->expr()));
+    current_bb->add_IRInstr(IRInstr::ret, {expr});
+    current_bb->add_exit(bb_epilogue);
+    return expr;
+}
+
+antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx) {
+    BasicBlock* bb_cond = new BasicBlock(cfg, "if_cond" + gen_unique_id(ctx));
+    BasicBlock* bb_then = new BasicBlock(cfg, "if_then" + gen_unique_id(ctx));
+    BasicBlock* bb_end = new BasicBlock(cfg, "if_end" + gen_unique_id(ctx));
+    BasicBlock* bb_else = nullptr;
+    
+    current_bb->add_exit(bb_cond);
+    current_bb = bb_cond;
+    current_bb->test_var_name = std::any_cast<string>(visit(ctx->expr()));
+
+    if (ctx->stmt().size() > 1) {
+        bb_else = new BasicBlock(cfg, "if_else" + gen_unique_id(ctx));
+        current_bb->add_exit(bb_then, bb_else); 
+    } else {
+        current_bb->add_exit(bb_then, bb_end);
+    }
+
+    current_bb = bb_then;
+    visit(ctx->stmt(0));
+    if (current_bb->exit_true == nullptr) {
+        current_bb->add_exit(bb_end);
+    }
+
+    if (ctx->stmt().size() > 1) {
+        current_bb = bb_else;
+        visit(ctx->stmt(1));
+        if (current_bb->exit_true == nullptr) {
+            current_bb->add_exit(bb_end);
+        }
+    }
+
+    current_bb = bb_end;
+    return 0;
+}
+
+antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx) {
+    BasicBlock* bb_cond = new BasicBlock(cfg, "while_cond" + gen_unique_id(ctx));
+    BasicBlock* bb_body = new BasicBlock(cfg, "while_body" + gen_unique_id(ctx));
+    BasicBlock* bb_end = new BasicBlock(cfg, "while_end" + gen_unique_id(ctx));
+
+    current_bb->add_exit(bb_cond);
+    current_bb = bb_cond;
+    current_bb->test_var_name = std::any_cast<string>(visit(ctx->expr()));
+    current_bb->add_exit(bb_body, bb_end);
+
+    current_bb = bb_body;
+    visit(ctx->stmt());
+    if (current_bb->exit_true == nullptr) {
+        current_bb->add_exit(bb_cond);
+    }
+
+    current_bb = bb_end;
+    return 0;
 }

@@ -6,11 +6,15 @@ prog : 'int' 'main' '(' ')' block;
 
 block : '{'stmt*'}' ;
 
-stmt : declare_stmt | return_stmt | expr ';' | block ;
+stmt : declare_stmt | return_stmt | expr ';' | block | if_stmt | while_stmt ;
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
 return_stmt : 'return' expr ';' ;
+
+if_stmt : 'if' '(' expr ')' stmt ('else' stmt)? ; 
+
+while_stmt : 'while' '(' expr ')' stmt ;
 
 expr : '(' expr ')'                                    #ParensExpr
      | OP=('!' | '-')expr                              #UnitaryExpr
