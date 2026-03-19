@@ -160,15 +160,35 @@ string x86Backend::generate(IRInstr *instr)
 
 
 
-// ===================== ARM BACKEND =====================
+// ===================== AARCH64 BACKEND =====================
+// Matches GCC output style on Apple Silicon (macOS AArch64):
+//   - No frame pointer saved, sp-relative addressing only
+//   - 32-bit registers: w0, w1, w8 (like GCC uses)
+//   - Prologue:  sub sp, sp, #N
+//   - Epilogue:  add sp, sp, #N  +  ret
+//
+// Variable offsets: SymbolVisitor assigns index as 0, -4, -8, ...
+// We store at [sp, #(stackSize + index)] so that index -4 maps to
+// the top of the local area, matching GCC's layout.
 
 
 
 ArmBackend::ArmBackend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
+// Compute the total stack frame size (16-byte aligned).
+int ArmBackend::computeFrameSize() const
+{
+  int numVars = (int)symbolTable.size();
+  int size = numVars * 4;
+  if (size % 16 != 0) size += 16 - (size % 16);
+  return size;
+}
+
 string ArmBackend::generatePrologue()
 {
+  int frameSize = computeFrameSize();
+
   string code = ".text\n";
 #ifdef __APPLE__
   code += ".globl _main\n";
@@ -177,34 +197,37 @@ string ArmBackend::generatePrologue()
   code += ".globl main\n";
   code += "main:\n";
 #endif
-  code += "    push {fp, lr}\n";
-  code += "    mov fp, sp\n";
+  code += "    sub sp, sp, #" + to_string(frameSize) + "\n";
   return code;
 }
 
+// Returns the sp-relative offset string for [sp, #offset].
+// SymbolVisitor sets index = 0, -4, -8, -12, ...
+// We shift by +frameSize so index 0 -> top of frame, -4 -> next slot, etc.
+// Actually SymbolVisitor starts at 0 and decrements: first var gets -4 after
+// the first decrement. We map: sp_offset = frameSize + index.
 string ArmBackend::getOffset(const string &varName)
 {
   auto it = symbolTable.find(varName);
   if (it != symbolTable.end())
   {
-    int offset = -4 * (it->second.index + 1);
-    return "#" + std::to_string(offset); 
+    int frameSize = computeFrameSize();
+    int spOffset = frameSize + it->second.index;
+    return to_string(spOffset);
   }
-  return "#0";
+  return "0";
 }
 
 string ArmBackend::loadBinaryOperands(IRInstr *instr)
 {
-  // Charge les opérandes dans r0 et r1
-  string code = "    ldr r0, [fp, " + getOffset(instr->getParams()[1]) + "]\n";
-  code += "    ldr r1, [fp, " + getOffset(instr->getParams()[2]) + "]\n";
+  string code = "    ldr w0, [sp, #" + getOffset(instr->getParams()[1]) + "]\n";
+  code        += "    ldr w1, [sp, #" + getOffset(instr->getParams()[2]) + "]\n";
   return code;
 }
 
 string ArmBackend::saveResultEax(IRInstr *instr)
 {
-  // Sauvegarde r0 dans la variable cible
-  return "    str r0, [fp, " + getOffset(instr->getParams()[0]) + "]\n";
+  return "    str w0, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
 }
 
 void ArmBackend::translate()
@@ -227,65 +250,74 @@ string ArmBackend::generate(IRInstr *instr)
   string code = "";
   switch (instr->getOp())
   {
-  case IRInstr::ldconst:
-    code += "    mov r0, #" + instr->getParams()[1] + "\n";
-    code += saveResultEax(instr);
+  case IRInstr::ldconst: {
+    // GCC uses w8 as scratch for constants, then str. We do the same.
+    int val = stoi(instr->getParams()[1]);
+    unsigned int uval = (unsigned int)val;
+    if (val >= 0 && val <= 65535) {
+      code += "    mov w8, #" + instr->getParams()[1] + "\n";
+    } else {
+      code += "    movz w8, #" + to_string(uval & 0xFFFF) + "\n";
+      if (uval >> 16)
+        code += "    movk w8, #" + to_string(uval >> 16) + ", lsl #16\n";
+    }
+    code += "    str w8, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
     break;
+  }
   case IRInstr::copy:
-    code += "    ldr r0, [fp, " + getOffset(instr->getParams()[1]) + "]\n";
-    code += saveResultEax(instr);
+    code += "    ldr w8, [sp, #" + getOffset(instr->getParams()[1]) + "]\n";
+    code += "    str w8, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
     break;
   case IRInstr::add:
     code += loadBinaryOperands(instr);
-    code += "    add r0, r0, r1\n";
+    code += "    add w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::sub:
     code += loadBinaryOperands(instr);
-    code += "    sub r0, r0, r1\n";
+    code += "    sub w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::mul:
     code += loadBinaryOperands(instr);
-    code += "    mul r0, r0, r1\n";
+    code += "    mul w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::div:
     code += loadBinaryOperands(instr);
-    code += "    bl __aeabi_idiv\n"; // r0 = r0 / r1
+    code += "    sdiv w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::mod:
     code += loadBinaryOperands(instr);
-    code += "    bl __aeabi_idivmod\n"; // r0 = r0 % r1 (résultat dans r1)
-    code += "    mov r0, r1\n";
+    code += "    sdiv w2, w0, w1\n";      // w2 = quotient
+    code += "    msub w0, w2, w1, w0\n";  // w0 = w0 - w2*w1 = remainder
     code += saveResultEax(instr);
     break;
   case IRInstr::and_:
     code += loadBinaryOperands(instr);
-    code += "    and r0, r0, r1\n";
+    code += "    and w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::or_:
     code += loadBinaryOperands(instr);
-    code += "    orr r0, r0, r1\n";
+    code += "    orr w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::xor_:
     code += loadBinaryOperands(instr);
-    code += "    eor r0, r0, r1\n";
+    code += "    eor w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::neg:
-    code += "    ldr r0, [fp, " + getOffset(instr->getParams()[1]) + "]\n";
-    code += "    rsb r0, r0, #0\n";
+    code += "    ldr w0, [sp, #" + getOffset(instr->getParams()[1]) + "]\n";
+    code += "    neg w0, w0\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::not_:
-    code += "    ldr r0, [fp, " + getOffset(instr->getParams()[1]) + "]\n";
-    code += "    cmp r0, #0\n";
-    code += "    moveq r0, #1\n";
-    code += "    movne r0, #0\n";
+    code += "    ldr w0, [sp, #" + getOffset(instr->getParams()[1]) + "]\n";
+    code += "    cmp w0, #0\n";
+    code += "    cset w0, eq\n";
     code += saveResultEax(instr);
     break;
   case IRInstr::cmp_eq:
@@ -295,25 +327,22 @@ string ArmBackend::generate(IRInstr *instr)
   case IRInstr::cmp_gt:
   case IRInstr::cmp_ge:
     code += loadBinaryOperands(instr);
-    code += "    cmp r0, r1\n";
-    if (instr->getOp() == IRInstr::cmp_eq)
-      code += "    moveq r0, #1\n    movne r0, #0\n";
-    else if (instr->getOp() == IRInstr::cmp_ne)
-      code += "    movne r0, #1\n    moveq r0, #0\n";
-    else if (instr->getOp() == IRInstr::cmp_lt)
-      code += "    movlt r0, #1\n    movge r0, #0\n";
-    else if (instr->getOp() == IRInstr::cmp_le)
-      code += "    movle r0, #1\n    movgt r0, #0\n";
-    else if (instr->getOp() == IRInstr::cmp_gt)
-      code += "    movgt r0, #1\n    movle r0, #0\n";
-    else if (instr->getOp() == IRInstr::cmp_ge)
-      code += "    movge r0, #1\n    movlt r0, #0\n";
+    code += "    cmp w0, w1\n";
+    if (instr->getOp() == IRInstr::cmp_eq)      code += "    cset w0, eq\n";
+    else if (instr->getOp() == IRInstr::cmp_ne) code += "    cset w0, ne\n";
+    else if (instr->getOp() == IRInstr::cmp_lt) code += "    cset w0, lt\n";
+    else if (instr->getOp() == IRInstr::cmp_le) code += "    cset w0, le\n";
+    else if (instr->getOp() == IRInstr::cmp_gt) code += "    cset w0, gt\n";
+    else if (instr->getOp() == IRInstr::cmp_ge) code += "    cset w0, ge\n";
     code += saveResultEax(instr);
     break;
-  case IRInstr::ret:
-    code += "    ldr r0, [fp, " + getOffset(instr->getParams()[0]) + "]\n";
-    code += "    pop {fp, pc}\n";
+  case IRInstr::ret: {
+    int frameSize = computeFrameSize();
+    code += "    ldr w0, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
+    code += "    add sp, sp, #" + to_string(frameSize) + "\n";
+    code += "    ret\n";
     break;
+  }
   default:
     break;
   }

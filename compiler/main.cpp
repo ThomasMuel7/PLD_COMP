@@ -16,7 +16,7 @@ using namespace antlr4;
 using namespace std;
 int main(int argc, const char **argv) {
   stringstream in;
-  string target = "x86";  
+  string target = "arm";  
   string inputFile;
 
   for (int i = 1; i < argc; i++) {
