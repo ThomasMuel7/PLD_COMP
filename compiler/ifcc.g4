@@ -25,6 +25,8 @@ expr : '(' expr ')'                                    #ParensExpr
      | expr '&' expr                                   #LogicBitANDExpr
      | expr '^' expr                                   #LogicBitXORExpr
      | expr '|' expr                                   #LogicBitORExpr
+     | expr '&&' expr                                  #LogicANDExpr
+     | expr '||' expr                                  #LogicORExpr
      | VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr   #AssignExpr
      | (INT | CHAR )                                   #ConstExpr
      | VAR                                             #VarExpr

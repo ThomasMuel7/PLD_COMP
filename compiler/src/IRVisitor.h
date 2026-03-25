@@ -44,6 +44,8 @@ public:
     virtual antlrcpp::Any visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx) override;
     virtual antlrcpp::Any visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx) override;
     virtual antlrcpp::Any visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx) override;
+    virtual antlrcpp::Any visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx) override;
+    virtual antlrcpp::Any visitLogicORExpr(ifccParser::LogicORExprContext *ctx) override;
     virtual antlrcpp::Any visitIf_stmt(ifccParser::If_stmtContext *ctx) override;
     virtual antlrcpp::Any visitWhile_stmt(ifccParser::While_stmtContext *ctx) override;
 };

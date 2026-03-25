@@ -184,6 +184,70 @@ antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext
     return dest;
 }
 
+antlrcpp::Any IRVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx) {
+    string dest = createTemp();
+    string zero = createTemp();
+    current_bb->add_IRInstr(IRInstr::ldconst, {zero, "0"});
+
+    string left = std::any_cast<string>(visit(ctx->expr(0)));
+    string leftBool = createTemp();
+    current_bb->add_IRInstr(IRInstr::cmp_ne, {leftBool, left, zero});
+
+    string uid = gen_unique_id(ctx);
+    BasicBlock* bb_rhs = new BasicBlock(cfg, "land_rhs" + uid);
+    BasicBlock* bb_false = new BasicBlock(cfg, "land_false" + uid);
+    BasicBlock* bb_end = new BasicBlock(cfg, "land_end" + uid);
+
+    current_bb->test_var_name = leftBool;
+    current_bb->add_exit(bb_rhs, bb_false);
+
+    current_bb = bb_false;
+    current_bb->add_IRInstr(IRInstr::ldconst, {dest, "0"});
+    current_bb->add_exit(bb_end);
+
+    current_bb = bb_rhs;
+    string right = std::any_cast<string>(visit(ctx->expr(1)));
+    string rightBool = createTemp();
+    current_bb->add_IRInstr(IRInstr::cmp_ne, {rightBool, right, zero});
+    current_bb->add_IRInstr(IRInstr::copy, {dest, rightBool});
+    current_bb->add_exit(bb_end);
+
+    current_bb = bb_end;
+    return dest;
+}
+
+antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx) {
+    string dest = createTemp();
+    string zero = createTemp();
+    current_bb->add_IRInstr(IRInstr::ldconst, {zero, "0"});
+
+    string left = std::any_cast<string>(visit(ctx->expr(0)));
+    string leftBool = createTemp();
+    current_bb->add_IRInstr(IRInstr::cmp_ne, {leftBool, left, zero});
+
+    string uid = gen_unique_id(ctx);
+    BasicBlock* bb_true = new BasicBlock(cfg, "lor_true" + uid);
+    BasicBlock* bb_rhs = new BasicBlock(cfg, "lor_rhs" + uid);
+    BasicBlock* bb_end = new BasicBlock(cfg, "lor_end" + uid);
+
+    current_bb->test_var_name = leftBool;
+    current_bb->add_exit(bb_true, bb_rhs);
+
+    current_bb = bb_true;
+    current_bb->add_IRInstr(IRInstr::ldconst, {dest, "1"});
+    current_bb->add_exit(bb_end);
+
+    current_bb = bb_rhs;
+    string right = std::any_cast<string>(visit(ctx->expr(1)));
+    string rightBool = createTemp();
+    current_bb->add_IRInstr(IRInstr::cmp_ne, {rightBool, right, zero});
+    current_bb->add_IRInstr(IRInstr::copy, {dest, rightBool});
+    current_bb->add_exit(bb_end);
+
+    current_bb = bb_end;
+    return dest;
+}
+
 antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
     string expr = std::any_cast<string>(visit(ctx->expr()));
     current_bb->add_IRInstr(IRInstr::ret, {expr});
