@@ -52,6 +52,19 @@ string SymbolVisitor::resolveVariable(const string &originalName) {
     return "";
 }
 
+void SymbolVisitor::registerVariable(const string &originalName, int declLine) {
+    if (scopeTable.back().find(originalName) != scopeTable.back().end()) {
+        cerr << "Erreur: la variable '" << originalName << "' est deja declaree dans ce bloc." << endl;
+        hasError = true;
+        return;
+    }
+
+    string uniqueName = originalName + "_" + to_string(uniqueVarId++);
+    scopeTable.back()[originalName] = uniqueName;
+    currentOffset -= 4;
+    table[uniqueName] = {currentOffset, false, declLine};
+}
+
 VariableInfo *SymbolVisitor::lookupVariableInfo(const string &originalName) {
     string uniqueName = resolveVariable(originalName);
     if (uniqueName.empty()) {
@@ -157,30 +170,46 @@ antlrcpp::Any SymbolVisitor::visitBlock(ifccParser::BlockContext *ctx) {
 }
 
 antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
-    for (auto decl : ctx->declarator()) {
-        string originalName = decl->VAR()->getText();
-        if (scopeTable.back().find(originalName) != scopeTable.back().end()) {
-            cerr << "Erreur: la variable '" << originalName << "' est deja declaree dans ce bloc." << endl;
-            hasError = true;
-            continue;
-        }
+    for (auto elmt : ctx->declare_elmt()) {
+        visit(elmt);
+    }
+    return 0;
+}
 
-        string uniqueName = originalName + "_" + to_string(uniqueVarId++);
-        scopeTable.back()[originalName] = uniqueName;
-        int declLine = decl->start->getLine();
-        currentOffset -= 4;
-        table[uniqueName] = {currentOffset, false, declLine};
+antlrcpp::Any SymbolVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx) {
+    if (ctx->VAR() != nullptr) {
+        registerVariable(ctx->VAR()->getText(), ctx->start->getLine());
+        return 0;
+    }
 
-        if (decl->expr() != nullptr) {
-            int rhsType = anyToExprType(visit(decl->expr()));
-            if (rhsType != TYPE_INT && rhsType != TYPE_INVALID) {
-                cerr << "Erreur: initialisation de type incompatible pour '" << originalName << "'." << endl;
-                hasError = true;
-            }
-            table[uniqueName].isUsed = true;
+    if (ctx->assign_stmt() != nullptr) {
+        string originalName = ctx->assign_stmt()->VAR()->getText();
+        registerVariable(originalName, ctx->start->getLine());
+        if (!hasError) {
+            return visit(ctx->assign_stmt());
         }
     }
     return 0;
+}
+
+antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
+    string originalName = ctx->VAR()->getText();
+    string uniqueName = resolveVariable(originalName);
+    int rhsType = anyToExprType(visit(ctx->expr()));
+
+    if (uniqueName.empty()) {
+        cerr << "Erreur: tentative d'assignation sur la variable non declaree '" << originalName << "'." << endl;
+        hasError = true;
+        return TYPE_INVALID;
+    }
+
+    if (rhsType != TYPE_INT && rhsType != TYPE_INVALID) {
+        cerr << "Erreur: affectation avec un type incompatible pour '" << originalName << "'." << endl;
+        hasError = true;
+    }
+
+    table[uniqueName].isUsed = true;
+    return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {

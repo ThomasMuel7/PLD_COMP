@@ -26,9 +26,9 @@ stmt : declare_stmt
      | while_stmt
      ;
 
-declare_stmt : 'int' declarator (',' declarator)* ';' ;
-
-declarator : VAR ('=' expr)? ;
+declare_stmt : 'int' declare_elmt (',' declare_elmt)* ';' ;
+declare_elmt : VAR | assign_stmt ;
+assign_stmt : VAR '=' expr ;
 
 return_stmt : 'return' expr? ';' ;
 
@@ -63,8 +63,8 @@ expr : '(' expr ')'                                               #ParensExpr
      | expr '||' expr                                             #LogicORExpr
      | VAR OP=('=' | '+=' | '-=' | '*=' | '/=') expr              #AssignExpr
      | (INT | CHAR )                                              #ConstExpr
-     | VAR                                                        #VarExpr
      | VAR '(' (expr (',' expr)*)? ')'                            #CallExpr
+     | VAR                                                        #VarExpr
      ;
 
 
