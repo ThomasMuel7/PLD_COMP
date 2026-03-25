@@ -41,20 +41,23 @@ int main() {
 
 Contraintes actuelles :
 
-- paramètres typés `int` uniquement
+- paramètres typés `int` et `int*`
 - type de retour de fonction : `int` ou `void`
 - présence obligatoire d'une fonction `main`
 - appels de fonctions supportés (avec contrôle d'arité)
-- structures de contrôle supportées (`if`, `else`, `while`, blocs imbriqués)
+- structures de contrôle supportées (`if`, `else`, `while`, `switch/case/default`, `break`, `continue`, blocs imbriqués)
 
 ### 2.2 Instructions supportées
 
-- déclaration : `int a;` et `int a, b, c;`
+- déclaration : `int a;`, `int a, b, c;`, `int *p;`, `int t[10];`
 - affectation : `a = expr;`
 - affectations composées : `+=`, `-=`, `*=`, `/=`
+- affectation indirecte via pointeur : `*p = expr;`
+- affectation d'élément de tableau : `t[i] = expr;`
+- incrémentation / décrémentation : `++a`, `a++`, `--a`, `a--`
 - appels de fonctions : `f(...)` en instruction
 - retour : `return expr;` et `return;`
-- `if`, `if/else`, `while`, blocs `{ ... }`
+- `if`, `if/else`, `while`, `switch/case/default`, `break`, `continue`, blocs `{ ... }`
 
 ### 2.3 Expressions supportées
 
@@ -64,8 +67,12 @@ Les expressions suivantes sont parsées et générées :
 - constantes entières
 - constantes caractère (`'a'`, `'0'`, etc.)
 - parenthèses
+- adressage : `&x`
+- déréférencement : `*p`
+- accès tableau : `t[i]`
 - unaires `-` (négation)
 - unaire `!`
+- pré/post incrémentation et décrémentation (`++a`, `a++`, `--a`, `a--`)
 - `*`, `/`, `%`
 - `+`, `-`
 - comparaisons : `>`, `<`, `>=`, `<=`
@@ -75,6 +82,11 @@ Les expressions suivantes sont parsées et générées :
 - appels de fonctions dans les expressions (pour les fonctions retournant `int`)
 
 La priorité des opérateurs est gérée dans la grammaire (`ifcc.g4`) via plusieurs niveaux de règles.
+
+Remarque importante :
+
+- l'arithmétique des pointeurs est implémentée dans un cadre restreint (`int*`), avec un pas de 4 octets.
+- les opérations `++/--` sont actuellement supportées sur variables scalaires entières ; les usages sur des lvalues plus complexes sont volontairement restreints.
 
 ### 2.4 Commentaires et directives
 
@@ -99,6 +111,15 @@ Le visiteur `SymbolVisitor` construit une table des symboles (`SymbolTable`) et 
 - erreur si une fonction `void` est utilisée dans une expression
 - erreur si `return;` dans une fonction `int`
 - erreur si `return expr;` dans une fonction `void`
+- erreur si `break` hors boucle/switch
+- erreur si `continue` hors boucle
+- erreur si `switch` contient des `case` dupliqués
+- erreur si `switch` contient plusieurs `default`
+- erreur si usage de `[]` sur une variable qui n'est ni tableau ni pointeur
+- erreur si déréférencement sur une expression non pointeur
+- erreur si déréférencement direct d'une constante ou expression non adressable (exemples: `*5`, `*(3+2)`)
+- erreur si affectation directe d'un tableau (`a = b` pour des tableaux)
+- erreur si mélange de types incompatible (`int` vs `int*`) dans certains contextes d'affectation/comparaison
 - warning si une variable est déclarée mais non utilisée
 - warning si division ou modulo par constante `0` (cas détecté statiquement)
 
@@ -106,6 +127,8 @@ Notes :
 
 - la détection de division par zéro ne couvre pas tous les cas dynamiques (ex. : variable valant 0 ou (0) ou (5-5))
 - les warnings (variable non utilisée, division par 0) ne bloquent pas la compilation
+- certaines règles sont plus strictes que GCC (notamment cohérence des `return`), ce qui peut provoquer des désalignements dans les dossiers de tests marqués `invalid/`.
+- le cas invalide `a = 5 ** 5;` est désormais correctement rejeté, car `*5` est reconnu comme déréférencement illégal.
 
 ## 4. Génération de code
 
@@ -129,6 +152,9 @@ Le backend gère maintenant plusieurs fonctions dans un même programme :
 - les labels assembleur internes sont préfixés par fonction (évite les collisions)
 - les paramètres sont récupérés depuis les registres d'appel
 - la pile locale x86 est réservée explicitement (frame) pour supporter les appels imbriqués et la récursion
+- la génération gère les accès mémoire indirects (lecture/écriture via pointeurs/tableaux)
+- la génération gère les flux de contrôle complexes (if/while/switch + break/continue)
+- la gestion des tailles `int`/`pointer` est prise en compte dans le passage d'arguments
 
 ## 5. Structure du projet
 
@@ -171,6 +197,16 @@ testfiles/
     unary/               # tests pour les opérateurs unaires
         ...
     functions/           # tests liés aux fonctions
+        ...
+    pointers/            # tests pointeurs (valid/invalid + stress)
+        ...
+    arrays/              # tests tableaux 1D (valid/invalid + stress)
+        ...
+    break-continue/      # tests break/continue (valid/invalid + stress)
+        ...
+    switch/              # tests switch/case/default (valid/invalid + stress)
+        ...
+    incdec/              # tests ++/-- pré/post (valid/invalid + stress)
         ...
     # Le jeu de tests est enrichi en continu et avant l'implémentation d'une nouvelle fonctionnalité pour le compilateur
 ```
@@ -215,12 +251,14 @@ Couverture actuelle (sélection) :
 
 - programmes valides : constantes, variables, priorités, parenthèses, chaînes d'opérations
 - opérateurs testés : `+ - * / %`
-- structures de contrôle : `if`, `if/else`, `while`
+- structures de contrôle : `if`, `if/else`, `while`, `switch/case/default`, `break`, `continue`
 - appels de fonctions (définition, arité, paramètres)
 - récursion (factorielle, fibonacci, récursion mutuelle)
+- mémoire et adressage : pointeurs (`&`, `*`) et tableaux 1D (`[]`)
+- incrémentation / décrémentation : préfixe et postfixe
 - cas invalides syntaxiques : tokens invalides, opérateurs incomplets, point-virgule manquant
-- cas invalides sémantiques : variable non déclarée, variable redéclarée, appel fonction inconnue, arité incorrecte, incohérences `return`
-- cas de robustesse : division/modulo par zéro (constante et via variable)
+- cas invalides sémantiques : variable non déclarée, variable redéclarée, appel fonction inconnue, arité incorrecte, incohérences `return`, contexte invalide de `break/continue`, labels `switch` invalides
+- cas de robustesse : division/modulo par zéro (constante et via variable), tests de stress par catégorie
 
 Exemples de fichiers :
 
@@ -258,7 +296,7 @@ Deux méthodes principales sont disponibles :
 
 - 4.1 Prise en main du squelette : fait
 - 4.2 Compilateur v0 (`return constante`) : fait
-- 4.3 Base de tests : en place et enrichie (123 tests)
+- 4.3 Base de tests : en place et fortement enrichie
 - 4.4 Variables en mémoire : fait (offsets pile)
 - 4.5 Table des symboles + vérifications statiques : fait
 - 4.6 Compilateur bout en bout pour langage restreint : fait
@@ -267,6 +305,10 @@ Deux méthodes principales sont disponibles :
 - 4.9 Appels de fonctions et paramètres : fait
 - 4.10 Fonctions `int/void` + cohérence des `return` : fait
 - 4.11 Récursion : fait (validée par tests dédiés)
+- 4.12 Pointeurs (`int*`) : fait (cadre restreint)
+- 4.13 Tableaux 1D (`int[]`) : fait (cadre restreint)
+- 4.14 `switch/case/default`, `break`, `continue` : fait
+- 4.15 Pré/post incrémentation-décrémentation (`++/--`) : fait (cadre restreint)
 
 ## 9. Répartition des tâches
 
@@ -289,7 +331,7 @@ int main() {
 
 Ces programmes n'ont pas de comportement défini et peuvent passer la compilation gcc ou pas (gcc accepte des codes illogiques par legacy).
 
-### 10.3 testfiles-div-invalid-37_division_0 et testfiles-div-invalid-37_division_0
+### 10.3 testfiles-div-invalid-37_division_0 et testfiles-div-invalid-38_division_variable_0
 
 Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pas sous mac (C'est probablement du au fait que notre gcc sous mac n'est pas exactement le même que celui sous linux) 
 
@@ -310,3 +352,18 @@ GCC peut accepter ce code en extension/legacy, ce qui peut créer un désalignem
 ### 10.7 --testfiles-getcharputchar / valid 01 / 02 / 03 / 07
 
 Sous notre version de gcc (clang) sous mac putchar n'existe pas, gcc le considere comme un programme invalide alors que ce n'est pas le cas.
+
+### 10.8 Différences volontaires avec GCC
+
+Notre compilateur applique certaines contraintes plus strictes que GCC (surtout sur la sémantique des `return`), et implémente un sous-ensemble contrôlé du C.
+Les verdicts peuvent donc diverger de GCC sur des cas que GCC accepte en mode permissif (souvent avec warning).
+
+### 10.9 Limites actuelles du sous-ensemble
+
+Le sous-ensemble implémenté reste volontairement borné. En particulier :
+
+- pas de types autres que `int`, `void` et `int*`
+- pas de tableaux multidimensionnels
+- pas de structures (`struct`), unions, enums
+- pas de pointeurs de fonctions
+- pas d'incrémentation/décrémentation généralisée sur toutes les lvalues C possibles

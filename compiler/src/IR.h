@@ -29,6 +29,7 @@ public:
         mul,
         div,
         mod,
+        addr,
         rmem,
         wmem,
         call, 
