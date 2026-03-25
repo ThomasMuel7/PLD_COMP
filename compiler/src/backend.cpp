@@ -210,7 +210,11 @@ string x86Backend::generate(IRInstr *instr) {
     for (int i = 0; i < argc; i++) {
       code += "    movl " + getOffset(p[i + 2]) + ", " + argRegs[i] + "\n";
     }
+#ifdef __APPLE__
+    code += "    call _" + funcName + "\n";
+#else
     code += "    call " + funcName + "\n";
+#endif
     code += "    movl %eax, " + getOffset(dest) + "\n";
     break;
   }
@@ -429,7 +433,11 @@ string ArmBackend::generate(IRInstr *instr)
     for (int i = 0; i < argc && i < (int)argRegs.size(); i++) {
       code += "    ldr " + argRegs[i] + ", [sp, #" + getOffset(p[i + 2]) + "]\n";
     }
+#ifdef __APPLE__
+    code += "    bl _" + funcName + "\n";
+#else
     code += "    bl " + funcName + "\n";
+#endif
     code += "    str w0, [sp, #" + getOffset(dest) + "]\n";
     break;
   }
