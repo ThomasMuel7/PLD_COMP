@@ -13,6 +13,5 @@ public:
   std::string functionName;
   bool isVoidReturn;
   std::vector<std::string> paramVarNames;
-  std::vector<bool> paramIsPointer;
   void set_entry(BasicBlock *entry);
 };

@@ -78,7 +78,7 @@ antlrcpp::Any SymbolVisitor::visitProg(ifccParser::ProgContext *ctx) {
             arity = (int)fn->param_list()->param().size();
         }
 
-        functionTable[name] = {parseReturnType(fn->type()->getText()), arity, {}, {}};
+        functionTable[name] = {parseReturnType(fn->type()->getText()), arity, {}};
     }
 
     if (functionTable.find("main") == functionTable.end()) {
@@ -118,7 +118,6 @@ antlrcpp::Any SymbolVisitor::visitFunction_decl(ifccParser::Function_declContext
     auto fit = functionTable.find(currentFunctionName);
     if (fit != functionTable.end()) {
         fit->second.paramUniqueNames.clear();
-        fit->second.paramIsPointer.clear();
     }
 
     if (ctx->param_list() != nullptr) {
@@ -135,11 +134,10 @@ antlrcpp::Any SymbolVisitor::visitFunction_decl(ifccParser::Function_declContext
             scopeTable.back()[originalName] = uniqueName;
             int declLine = p->start->getLine();
             currentOffset -= 4;
-            table[uniqueName] = {currentOffset, false, false, false, 0, 4, declLine};
+            table[uniqueName] = {currentOffset, false, declLine};
 
             if (fit != functionTable.end()) {
                 fit->second.paramUniqueNames.push_back(uniqueName);
-                fit->second.paramIsPointer.push_back(false);
             }
         }
     }
@@ -171,7 +169,7 @@ antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *
         scopeTable.back()[originalName] = uniqueName;
         int declLine = decl->start->getLine();
         currentOffset -= 4;
-        table[uniqueName] = {currentOffset, false, false, false, 0, 4, declLine};
+        table[uniqueName] = {currentOffset, false, declLine};
 
         if (decl->expr() != nullptr) {
             int rhsType = anyToExprType(visit(decl->expr()));

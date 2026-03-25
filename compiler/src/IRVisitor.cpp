@@ -22,7 +22,7 @@ string IRVisitor::resolveVariable(const string &originalName) {
 string IRVisitor::createTemp() {
     string tempName = "tmp" + to_string(tempCounter++);
     currentOffset -= 4;
-    table[tempName] = {currentOffset, true, false, false, 0, 4, 0};
+    table[tempName] = {currentOffset, true, 0};
     return tempName;
 }
 
@@ -63,7 +63,6 @@ antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ct
             string uniqueName = originalName + "_" + to_string(uniqueVarId++);
             scopeTable.back()[originalName] = uniqueName;
             cfg->paramVarNames.push_back(uniqueName);
-            cfg->paramIsPointer.push_back(false);
         }
     }
 

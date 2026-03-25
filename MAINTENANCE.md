@@ -1,374 +1,836 @@
 # MAINTENANCE
 
-Ce document decrit la version simplifiee du compilateur IFCC.
-Objectif: maintenir un compilateur robuste sur un sous-ensemble C 
+Ce fichier est volontairement une documentation technique complete du projet.
+Il peut etre lu comme un manuel d'architecture + pseudo-code de reference.
 
-## 1. Pipeline complet
+Objectif principal:
+- expliquer clairement le role de chaque module
+- expliciter les variables d'etat importantes
+- donner un pseudo-code pour chaque fonction cle des passes semantique et IR
 
-Le pipeline est strictement separe en 4 etages:
+---
 
-1. Parsing (ANTLR)
-- fichier: `compiler/ifcc.g4`
-- sortie: AST ANTLR
+## 1) Vue d'ensemble du compilateur
 
-2. Analyse semantique
-- fichiers: `compiler/src/SymbolVisitor.h`, `compiler/src/SymbolVisitor.cpp`
-- sortie: `SymbolTable`, `FunctionTable`, erreurs/warnings semantiques
+Le compilateur suit 4 etapes strictes.
+
+1. Parsing
+- Fichier: `compiler/ifcc.g4`
+- Entree: source C simplifie
+- Sortie: AST ANTLR
+
+2. Verification semantique
+- Fichiers: `compiler/src/SymbolVisitor.h`, `compiler/src/SymbolVisitor.cpp`
+- Entree: AST
+- Sortie: erreurs/warnings + tables (`SymbolTable`, `FunctionTable`)
 
 3. Generation IR + CFG
-- fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`
-- sortie: liste de CFG (un CFG par fonction)
+- Fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`
+- Entree: AST valide + tables semantiques
+- Sortie: un CFG par fonction, rempli en IR
 
 4. Backend
-- fichiers: `compiler/src/backend.h`, `compiler/src/backend.cpp`
-- sortie: assembleur cible
+- Fichiers: `compiler/src/backend.h`, `compiler/src/backend.cpp`
+- Entree: CFG/IR
+- Sortie: assembleur final
 
-Point d'entree:
+Point d'entree runtime du compilateur:
 - `compiler/main.cpp`
 
-## 2. Front-end: grammaire simplifiee
+---
 
-Fichier: `compiler/ifcc.g4`
+## 2) Langage supporte (scope officiel)
 
-### 2.1 Types et declarations
+### 2.1 Types et fonctions
+- types de retour: `int`, `void`
+- parametres: uniquement `int x`
+- arite max verifiee: 6 arguments
 
-- types de fonctions: `int`, `void`
-- parametres: `int VAR`
-- declarateur local: `VAR` ou `VAR = expr`
-- declaration multiple autorisee: `int a, b = 1, c;`
+### 2.2 Declarations
+- declaration simple: `int a;`
+- declaration avec init: `int a = expr;`
+- declaration multiple: `int a, b = 1, c;`
+- declaration possible dans tout bloc
 
-### 2.2 Expressions supportees
-
-- parentheses
-- pre/post inc-dec sur variable
-- unaires `!` et `-`
-- binaire `* / %`
-- binaire `+ -`
-- comparaisons `< <= > >=`
-- egalite `== !=`
-- bitwise `& ^ |`
-- logiques paresseux `&& ||`
-- affectation `= += -= *= /=` sur variable
-- constante `INT`, `CHAR`
+### 2.3 Expressions supportees
+- constantes: `INT`, `CHAR`
 - variable
 - appel de fonction
+- affectations: `=`, `+=`, `-=`, `*=`, `/=`
+- unaires: `!`, `-`
+- pre/post inc-dec: `++x`, `x++`, `--x`, `x--`
+- binaires arithmetiques: `+ - * / %`
+- comparaisons: `< <= > >= == !=`
+- bitwise: `& ^ |`
+- logiques court-circuit: `&& ||`
 
-### 2.3 Expressions retirees explicitement
+### 2.4 Controle de flux supporte
+- `if / else`
+- `while`
+- `switch / case / default`
+- `break`, `continue`
+- `return`
 
-La grammaire ne contient plus:
+### 2.5 Features explicitement non supportees (parmi les facultatifs)
+- pointeurs (`*`, `&`)
+- tableaux (`a[i]`, declaration tableau)
+- doubles
+- propagation de constantes
 
-- adressage `&x`
-- dereferencement `*p`
-- acces tableau `a[i]`
-- ecriture indirecte `*p = ...`
-- ecriture tableau `a[i] = ...`
+Nous avons décidé de ne pas implémenter les fonctionnalités non prioritaires et déconseillées.
 
-C'est la barriere principale qui empeche les regressions pointeurs/tableaux.
+---
 
-## 3. Structures de donnees
+## 3) Structures de donnees
 
-### 3.1 VariableInfo
+### 3.1 VariableInfo (`compiler/src/SymbolTable.h`)
 
-Fichier: `compiler/src/SymbolTable.h`
+```text
+index       : offset pile de la variable
+isUsed      : true si la variable est lue/ecrite
+declLine    : ligne de declaration (pour warning unused)
+```
 
-Champs utilises dans la version simplifiee:
-
-- `index`: offset pile
-- `isUsed`: marque si la variable a ete lue/ecrite
-- `declLine`: ligne de declaration pour warning unused
-
-Champs historiques conserves pour compatibilite interne backend:
-
-- `isPointer`, `isArray`, `arrayLength`, `byteSize`
-
-Dans ce mode simplifie, ces champs sont renseignes de maniere neutre (`false`, `0`, `4`).
+Utilite pratique:
+- `index` sert au placement stack
+- `isUsed` + `declLine` servent au warning de fin d'analyse
 
 ### 3.2 FunctionInfo
 
-- `returnType`: `Int` ou `Void`
-- `arity`: nombre de parametres
-- `paramUniqueNames`: noms internes suffixes
-- `paramIsPointer`: conserve pour compatibilite backend, rempli en `false`
+```text
+returnType       : Int ou Void
+arity            : nombre de parametres
+paramUniqueNames : noms internes scopes des parametres
+```
+
+Utilite pratique:
+- verification d'appels (existence + arite)
+- mapping coherent entre front-end semantique et IR/backend
 
 ### 3.3 ScopeTable
 
-`ScopeTable = vector<map<string,string>>`
-
-- chaque map: nom source -> nom interne unique
-- push/pop a l'entree/sortie de bloc
-- resolution en partant du scope le plus interne
-
-## 4. SymbolVisitor en detail
-
-Fichier: `compiler/src/SymbolVisitor.cpp`
-
-Le `SymbolVisitor` fait toute la coherence semantique du langage.
-
-### 4.1 Etat global du visiteur
-
-- `table`: table des variables
-- `functionTable`: signatures des fonctions
-- `scopeTable`: pile de scopes
-- `currentOffset`: offset pile courant
-- `uniqueVarId`: suffixe pour nommage unique
-- `hasError`: drapeau d'erreur semantique
-- `currentFunctionName`: fonction en cours
-- `currentFunctionReturnType`: type de retour attendu
-- `loopDepth`, `switchDepth`: controle contextuel de `break`/`continue`
-
-### 4.2 Helper critiques
-
-- `resolveVariable(name)`
-  - role: trouver la variable visible la plus proche
-  - comportement: scan du scope interne vers externe
-  - retour: nom unique interne ou chaine vide
-
-- `lookupVariableInfo(name)`
-  - role: acces direct a `VariableInfo` depuis le nom source
-  - utilise pour validations fines
-
-- `anyToExprType(Any)`
-  - role: convertir le retour des visiteurs d'expression en type interne
-  - types internes: `TYPE_INT`, `TYPE_INVALID`
-
-### 4.3 Fonction par fonction
-
-- `visitProg`
-  - predeclare toutes les fonctions (nom, type retour, arite)
-  - detecte doublons de fonctions
-  - impose presence de `main`
-  - visite ensuite chaque fonction
-  - lance `checkUnusedVariables` en fin de passe
-
-- `checkUnusedVariables`
-  - parcourt la table des symboles
-  - emet un warning par variable jamais utilisee
-  - inclut la ligne de declaration quand disponible
-
-- `visitFunction_decl`
-  - initialise contexte de fonction
-  - ouvre le scope des parametres
-  - ajoute chaque parametre en variable locale interne
-  - reserve 4 octets par parametre
-  - enregistre les noms uniques des parametres
-  - visite le bloc de la fonction
-
-- `visitBlock`
-  - push/pop de scope
-  - visite sequentielle des statements
-
-- `visitDeclare_stmt`
-  - verifie redeclaration locale
-  - cree nom unique
-  - reserve 4 octets en pile
-  - si initialiseur present: verifie type expression et marque variable comme utilisee
-
-- `visitReturn_stmt`
-  - en fonction `void`: interdit `return expr;`
-  - en fonction `int`: interdit `return;`
-  - verifie que `return expr` est de type entier
-
-- `visitVarExpr`
-  - verifie declaration
-  - marque la variable utilisee
-  - retourne type `TYPE_INT`
-
-- `visitAssignExpr`
-  - verifie declaration lhs
-  - visite rhs
-  - verifie compatibilite (int-only)
-  - retourne `TYPE_INT` (comme en C)
-
-- `visitMultDivModExpr`
-  - verifie types entiers des 2 operandes
-  - warning si division/modulo par zero constant
-  - retourne `TYPE_INT`
-
-- `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBit*`, `visitLogic*`, `visitUnitaryExpr`
-  - meme schema: visite operandes, controle type int-only, retourne `TYPE_INT`
-
-- `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
-  - exige variable declaree
-  - marque variable utilisee
-  - retourne `TYPE_INT`
-
-- `visitCallExpr`
-  - cas builtins:
-    - `putchar`: arite 1
-    - `getchar`: arite 0
-  - cas fonctions utilisateur:
-    - fonction definie
-    - arite correcte
-    - fonction `void` non utilisable comme expression
-  - visite tous les arguments et force type entier
-
-- `visitBreak_stmt`, `visitContinue_stmt`
-  - `break`: autorise seulement en boucle/switch
-  - `continue`: autorise seulement en boucle
-
-- `visitWhile_stmt`
-  - condition de type entier
-  - gestion de `loopDepth`
-
-- `visitSwitch_stmt`
-  - expression switch de type entier
-  - detection `case` dupliques
-  - detection multi `default`
-  - gestion de `switchDepth`
-
-## 5. IRVisitor en detail
-
-Fichier: `compiler/src/IRVisitor.cpp`
-
-Le `IRVisitor` transforme l'AST valide en IR lineaire, groupe par basic blocks dans un CFG.
-
-### 5.1 Etat global du visiteur
-
-- `cfgs`: tous les CFG produits
-- `cfg`: CFG courant
-- `current_bb`: bloc courant
-- `bb_epilogue`: bloc de sortie fonction
-- `table`: symboles (pour offsets des temporaires)
-- `functionTable`: signatures connues
-- `scopeTable`: resolution des noms pendant generation
-- `currentOffset`: allocation pile des temporaires
-- `tempCounter`: generation de `tmp0`, `tmp1`, ...
-- `uniqueVarId`: suffixe de noms internes
-- `breakTargets`, `continueTargets`: piles de cibles de controle
-
-### 5.2 Helpers critiques
-
-- `resolveVariable(name)`
-  - meme strategie que le `SymbolVisitor`
-
-- `createTemp()`
-  - alloue un temporaire entier (4 octets)
-  - enregistre l'offset en table symbole
-
-- `gen_unique_id(ctx)`
-  - derive un suffixe unique ligne/colonne
-  - evite collisions de labels de basic blocks
-
-### 5.3 Fonction par fonction
-
-- `visitProg`
-  - visite chaque fonction
-
-- `visitFunction_decl`
-  - cree CFG
-  - cree bloc `prologue`, `body`, `epilogue`
-  - mappe les parametres sur noms uniques
-  - visite le bloc fonction
-  - injecte un `return 0` implicite si aucun return explicite ne termine le flux
-
-- `visitBlock`
-  - push/pop scope
-  - visite statements
-  - stoppe la visite locale si le bloc courant est deja termine (sortie branchee)
-
-- `visitDeclare_stmt`
-  - enregistre noms uniques de variables locales
-  - genere `copy` si initialiseur present
-
-- `visitAssignExpr`
-  - `=` -> IR `copy`
-  - `+= -= *= /=` -> operation en place
-  - retourne la variable lhs (semantique expression)
-
-- `visitConstExpr`
-  - cree un temporaire
-  - genere `ldconst`
-
-- `visitVarExpr`
-  - retourne la variable resolue
-
-- `visitPreIncDecVarExpr` / `visitPostIncDecVarExpr`
-  - genere `ldconst 1`
-  - puis `add`/`sub`
-  - version post retourne l'ancienne valeur via temporaire copie
-
-- `visitUnitaryExpr`
-  - `-` -> IR `neg`
-  - `!` -> IR `not_`
-
-- `visitMultDivModExpr`, `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBit*`
-  - visite lhs/rhs
-  - cree un temporaire destination
-  - emet l'operation IR correspondante
-
-- `visitLogicANDExpr` (court-circuit)
-  - evalue lhs
-  - branche vers bloc false (resultat 0) ou bloc rhs
-  - evalue rhs seulement si lhs vrai
-  - fusion en bloc end
-
-- `visitLogicORExpr` (court-circuit)
-  - evalue lhs
-  - branche vers bloc true (resultat 1) ou bloc rhs
-  - evalue rhs seulement si lhs faux
-  - fusion en bloc end
-
-- `visitCallExpr`
-  - construit la liste parametres IR (`func`, `dest`, `args...`)
-  - emet instruction `call`
-  - retourne `dest`
-
-- `visitReturn_stmt`
-  - si `return expr`: calcule `expr` et emet `ret expr`
-  - si `return;`: emet `ret 0`
-  - branche vers `bb_epilogue`
-
-- `visitIf_stmt`
-  - cree `bb_cond`, `bb_then`, optionnel `bb_else`, `bb_end`
-  - condition stockee dans `test_var_name`
-  - connecte les sorties conditionnelles
-
-- `visitWhile_stmt`
-  - cree `bb_cond`, `bb_body`, `bb_end`
-  - pousse cibles `break/continue`
-  - boucle sur `bb_cond`
-
-- `visitBreak_stmt` / `visitContinue_stmt`
-  - branche vers cible top de pile
-
-- `visitSwitch_stmt`
-  - construit chaine de dispatch comparant valeur switch a chaque case
-  - supporte default
-  - gere fallthrough
-  - gere `break` via `breakTargets`
-
-## 6. Backend: implications de la simplification
-
-Le backend conserve du code historique multi-cas, mais en pratique:
-
-- toutes les valeurs generees par front-end simplifie sont des entiers
-- `paramIsPointer` reste a `false`
-- les operations memoire indirecte (`addr`, `rmem`, `wmem`) ne sont plus emises
-
-Ceci permet de garder un backend stable sans complexifier le front-end.
-
-## 7. Politique de tests
-
-Les tests conserves sont alignes sur le perimetre supporte.
-
-Retire:
-
-- `testfiles/pointers/`
-- `testfiles/arrays/`
-- tests relies explicitement a ces features dans d'autres categories
-
-Conserve:
-
-- operations int
-- controle de flux
-- fonctions
-- I/O std (`putchar/getchar`)
-- declarations/initialisations
-- warnings `unused`
-
-## 8. Commandes de maintenance
-
-Build complet:
+Definition logique:
+`ScopeTable = vector<map<nom_source, nom_unique>>`
+
+Utilite pratique:
+- gere le masquage de variables (shadowing)
+- permet une resolution de nom O(nombre_de_scopes)
+
+Pseudo-code de resolution:
+
+```text
+resolve(name):
+  pour i de dernier_scope a premier_scope:
+    si name existe dans scope[i]:
+      retourner scope[i][name]
+  retourner not_found
+```
+
+---
+
+## 4) SymbolVisitor: specification detaillee
+
+`SymbolVisitor` est la passe de coherence semantique.
+Chaque visiteur d'expression retourne un type logique interne:
+- `TYPE_INT`
+- `TYPE_INVALID`
+
+### 4.1 Variables d'etat (membres)
+
+```text
+table                     : SymbolTable globale des variables uniques
+functionTable             : signatures des fonctions
+scopeTable                : pile de scopes
+currentOffset             : offset pile courant (decroit de 4 en 4)
+uniqueVarId               : compteur pour suffixes _0, _1, _2
+hasError                  : drapeau global d'erreur semantique
+currentFunctionName       : nom de la fonction en cours
+currentFunctionReturnType : type attendu de return
+loopDepth                 : profondeur while
+switchDepth               : profondeur switch
+```
+
+### 4.2 Helpers
+
+#### `resolveVariable(originalName)`
+But: trouver le nom interne visible depuis le scope courant.
+
+Pseudo-code:
+
+```text
+resolveVariable(name):
+  pour i de scopeTable.size-1 a 0:
+    si name dans scopeTable[i]:
+      retourner scopeTable[i][name]
+  retourner ""
+```
+
+#### `lookupVariableInfo(originalName)`
+But: obtenir `VariableInfo*` en partant d'un nom source.
+
+Pseudo-code:
+
+```text
+lookupVariableInfo(name):
+  unique = resolveVariable(name)
+  si unique == "": retourner null
+  si unique absent de table: retourner null
+  retourner &table[unique]
+```
+
+#### `checkUnusedVariables()`
+But: emettre les warnings `unused` en fin de passe.
+
+Pseudo-code:
+
+```text
+checkUnusedVariables():
+  pour chaque (uniqueName, info) dans table:
+    si info.isUsed == false:
+      afficher warning avec nom de base et ligne
+```
+
+### 4.3 Fonctions visitees, une par une
+
+#### `visitProg`
+Responsabilite:
+- predeclarer toutes les signatures de fonction
+- detecter doublons
+- imposer presence de `main`
+- visiter ensuite chaque fonction
+- lancer le scan `unused`
+
+Pseudo-code:
+
+```text
+visitProg(ctx):
+  pour fn dans programme:
+    si fn.nom deja dans functionTable:
+      erreur doublon
+    sinon:
+      functionTable[fn.nom] = {returnType, arity, [], []}
+
+  si main absente:
+    erreur
+
+  pour fn dans programme:
+    visit(fn)
+
+  checkUnusedVariables()
+```
+
+#### `visitFunction_decl`
+Responsabilite:
+- initialiser le contexte fonction
+- creer le scope des parametres
+- allouer les parametres en locals internes
+
+Pseudo-code:
+
+```text
+visitFunction_decl(ctx):
+  currentFunctionName = ctx.nom
+  currentFunctionReturnType = parseReturnType(ctx.type)
+  push scope local fonction
+
+  reset paramUniqueNames pour cette signature
+
+  pour param dans ctx.params:
+    si param.nom deja dans scope courant:
+      erreur
+      continue
+
+    unique = param.nom + "_" + uniqueVarId++
+    scopeTable.top[param.nom] = unique
+
+    currentOffset -= 4
+    table[unique] = {index=currentOffset, isUsed=false, declLine=ligne}
+
+    enregistrer unique dans functionTable
+
+  visit(ctx.block)
+  pop scope
+```
+
+#### `visitBlock`
+Responsabilite:
+- ouvrir/fermer un scope lexical
+
+Pseudo-code:
+
+```text
+visitBlock(ctx):
+  push scope
+  pour stmt dans ctx.stmts:
+    visit(stmt)
+  pop scope
+```
+
+#### `visitDeclare_stmt`
+Responsabilite:
+- interdire la redeclaration dans le meme scope
+- creer une variable interne
+- verifier l'initialiseur si present
+
+Pseudo-code:
+
+```text
+visitDeclare_stmt(ctx):
+  pour declarator dans ctx.declarators:
+    si nom deja dans scope courant:
+      erreur
+      continue
+
+    unique = nom + "_" + uniqueVarId++
+    scopeTable.top[nom] = unique
+    currentOffset -= 4
+    table[unique] = {..., isUsed=false, declLine=ligne}
+
+    si initialiseur existe:
+      t = visit(expr)
+      si t incompatible:
+        erreur
+      table[unique].isUsed = true
+```
+
+#### `visitReturn_stmt`
+Responsabilite:
+- valider la coherence `return` avec le type de la fonction courante.
+
+Pseudo-code:
+
+```text
+visitReturn_stmt(ctx):
+  si fonction void:
+    si expr presente: erreur
+    retourner
+
+  # fonction int
+  si expr absente: erreur
+  sinon:
+    t = visit(expr)
+    si t non entier: erreur
+```
+
+#### `visitParensExpr`, `visitConstExpr`, `visitVarExpr`
+Responsabilite:
+- propagation des types de base.
+
+Pseudo-code:
+
+```text
+visitParensExpr: return visit(expr)
+visitConstExpr : return TYPE_INT
+
+visitVarExpr(name):
+  unique = resolveVariable(name)
+  si unique introuvable: erreur; return TYPE_INVALID
+  table[unique].isUsed = true
+  return TYPE_INT
+```
+
+#### `visitAssignExpr`
+Responsabilite:
+- verifier lhs declaree
+- verifier rhs de type entier
+- marquer lhs comme utilisee
+
+Pseudo-code:
+
+```text
+visitAssignExpr(lhs, op, rhs):
+  unique = resolveVariable(lhs)
+  tRhs = visit(rhs)
+
+  si unique introuvable: erreur; return TYPE_INVALID
+  si tRhs incompatible: erreur
+
+  table[unique].isUsed = true
+  return TYPE_INT
+```
+
+#### `visitMultDivModExpr`
+Responsabilite:
+- verifier types des 2 operandes
+- warning division/modulo par zero constant
+
+Pseudo-code:
+
+```text
+visitMultDivModExpr(lhs, op, rhs):
+  t1 = visit(lhs)
+  t2 = visit(rhs)
+  si t1 ou t2 incompatibles: erreur
+
+  si rhs est constante ET (op == / OU op == % ) ET rhs == 0:
+    warning
+
+  return TYPE_INT
+```
+
+#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+Responsabilite:
+- exiger une variable declaree, marquer usage.
+
+Pseudo-code:
+
+```text
+visitPre/PostIncDecVarExpr(var):
+  unique = resolveVariable(var)
+  si introuvable: erreur; return TYPE_INVALID
+  table[unique].isUsed = true
+  return TYPE_INT
+```
+
+#### `visitUnitaryExpr`, `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitXORExpr`, `visitLogicBitORExpr`, `visitLogicANDExpr`, `visitLogicORExpr`
+Responsabilite:
+- schema homogene: verifier types des operandes, retourner int.
+
+Pseudo-code commun:
+
+```text
+visitBinaryLike(lhs, rhs):
+  t1 = visit(lhs)
+  t2 = visit(rhs)
+  si t1/t2 incompatibles: erreur
+  return TYPE_INT
+
+visitUnaryLike(expr):
+  t = visit(expr)
+  si t incompatible: erreur
+  return TYPE_INT
+```
+
+#### `visitCallExpr`
+Responsabilite:
+- verifier contraintes d'appel builtins/user
+- verifier arite
+- interdire utilisation d'une fonction void comme expression
+- verifier types d'arguments
+
+Pseudo-code:
+
+```text
+visitCallExpr(funcName, args):
+  argc = args.size
+  si argc > 6: erreur
+
+  si funcName == putchar:
+    si argc != 1: erreur
+  sinon si funcName == getchar:
+    si argc != 0: erreur
+  sinon:
+    si fonction absente: erreur
+    sinon si arite != argc: erreur
+    si returnType == void ET appel utilise comme expression:
+      erreur
+
+  pour arg dans args:
+    t = visit(arg)
+    si t incompatible: erreur
+
+  return TYPE_INT
+```
+
+#### `visitBreak_stmt`, `visitContinue_stmt`
+Pseudo-code:
+
+```text
+visitBreak_stmt:
+  si loopDepth == 0 ET switchDepth == 0: erreur
+
+visitContinue_stmt:
+  si loopDepth == 0: erreur
+```
+
+#### `visitWhile_stmt`
+Pseudo-code:
+
+```text
+visitWhile_stmt(cond, body):
+  t = visit(cond)
+  si t incompatible: erreur
+  loopDepth++
+  visit(body)
+  loopDepth--
+```
+
+#### `visitSwitch_stmt`
+Pseudo-code:
+
+```text
+visitSwitch_stmt(expr, parts):
+  t = visit(expr)
+  si t incompatible: erreur
+
+  switchDepth++
+  seenCases = {}
+  hasDefault = false
+
+  pour part dans parts:
+    si part est case:
+      value = valeur case
+      si value dans seenCases: erreur
+      ajouter value
+    sinon si part est default:
+      si hasDefault: erreur
+      hasDefault = true
+    sinon si part est statement:
+      visit(statement)
+
+  switchDepth--
+```
+
+---
+
+## 5) IRVisitor: specification detaillee
+
+`IRVisitor` prend un AST semantiquement valide et produit l'IR execute par le backend.
+
+### 5.1 Variables d'etat (membres)
+
+```text
+cfgs            : tableau de CFG, un par fonction
+cfg             : CFG courant
+current_bb      : basic block courant
+bb_epilogue     : block epilogue de la fonction courante
+table           : SymbolTable partagee (variables + temporaires)
+functionTable   : signatures connues
+scopeTable      : resolution nom source -> nom unique
+currentOffset   : offset pile courant pour temporaires
+tempCounter     : compteur tmp0, tmp1, ...
+uniqueVarId     : compteur suffixe pour noms locals
+breakTargets    : pile de cibles break
+continueTargets : pile de cibles continue
+```
+
+### 5.2 Helpers
+
+#### `createTemp()`
+But:
+- reserver un entier temporaire
+- l'enregistrer dans `table`
+
+Pseudo-code:
+
+```text
+createTemp():
+  name = "tmp" + tempCounter++
+  currentOffset -= 4
+  table[name] = {index=currentOffset, isUsed=true, declLine=0}
+  return name
+```
+
+#### `resolveVariable(name)`
+But:
+- retrouver le nom unique d'une variable source.
+- fallback: renvoyer `name` si non trouve (utile pour robustesse generation).
+
+#### `gen_unique_id(ctx)`
+But:
+- fabriquer des labels uniques de blocs via ligne+colonne.
+
+### 5.3 Fonctions visitees, une par une
+
+#### `visitProg`
+
+```text
+visitProg(ctx):
+  pour chaque fonction:
+    visit(fonction)
+```
+
+#### `visitFunction_decl`
+Responsabilite:
+- creer CFG + blocs de base
+- initialiser mapping des parametres
+- visiter le corps
+- injecter un `ret 0` si le flot ne termine pas explicitement
+
+Pseudo-code:
+
+```text
+visitFunction_decl(ctx):
+  cfg = nouveau CFG(nom, estVoid)
+  creer bb_prologue, bb_body, bb_epilogue
+  connect prologue -> body
+  current_bb = body
+
+  push scope parametres
+  pour chaque param:
+    unique = param.nom + "_" + uniqueVarId++
+    scopeTable.top[param.nom] = unique
+    cfg.paramVarNames.push(unique)
+  visit(block)
+
+  si current_bb n'a pas deja de sortie:
+    tmp = createTemp(); ldconst tmp, 0; ret tmp; jump epilogue
+
+  pop scope
+```
+
+#### `visitBlock`
+
+```text
+visitBlock(ctx):
+  push scope
+  pour stmt dans ctx:
+    visit(stmt)
+    si current_bb deja termine (sortie posee):
+      break
+  pop scope
+```
+
+#### `visitDeclare_stmt`
+
+```text
+visitDeclare_stmt(ctx):
+  pour decl:
+    unique = decl.nom + "_" + uniqueVarId++
+    scopeTable.top[decl.nom] = unique
+    si decl a init:
+      v = visit(initExpr)
+      emit copy unique, v
+```
+
+#### `visitAssignExpr`
+
+```text
+visitAssignExpr(lhs, op, rhs):
+  r = visit(rhs)
+  l = resolve(lhs)
+  si op == "=": emit copy l, r
+  sinon si op == "+=": emit add l, l, r
+  sinon si op == "-=": emit sub l, l, r
+  sinon si op == "*=": emit mul l, l, r
+  sinon si op == "/=": emit div l, l, r
+  return l
+```
+
+#### `visitConstExpr`, `visitVarExpr`, `visitParensExpr`
+
+```text
+visitConstExpr(c):
+  t = createTemp()
+  emit ldconst t, valeur(c)
+  return t
+
+visitVarExpr(v):
+  return resolve(v)
+
+visitParensExpr(e):
+  return visit(e)
+```
+
+#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+
+```text
+visitPreIncDecVarExpr(var, op):
+  v = resolve(var)
+  one = createTemp(); emit ldconst one, 1
+  si op == ++: emit add v, v, one
+  sinon: emit sub v, v, one
+  return v
+
+visitPostIncDecVarExpr(var, op):
+  v = resolve(var)
+  old = createTemp(); emit copy old, v
+  one = createTemp(); emit ldconst one, 1
+  si op == ++: emit add v, v, one
+  sinon: emit sub v, v, one
+  return old
+```
+
+#### `visitUnitaryExpr`
+
+```text
+visitUnitaryExpr(op, e):
+  x = visit(e)
+  d = createTemp()
+  si op == "-": emit neg d, x
+  sinon: emit not_ d, x
+  return d
+```
+
+#### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr`
+Schema commun:
+
+```text
+visitBinary(op, lhs, rhs):
+  l = visit(lhs)
+  r = visit(rhs)
+  d = createTemp()
+  emit operation(op) d, l, r
+  return d
+```
+
+#### `visitLogicANDExpr` (court-circuit)
+
+Pseudo-code:
+
+```text
+visitLogicANDExpr(lhs, rhs):
+  dest = createTemp()
+  zero = createTemp(); ldconst zero, 0
+  left = visit(lhs)
+  leftBool = createTemp(); cmp_ne leftBool, left, zero
+
+  creer bb_rhs, bb_false, bb_end
+  branch sur leftBool: vrai->bb_rhs, faux->bb_false
+
+  bb_false: ldconst dest, 0; jump bb_end
+  bb_rhs  : right = visit(rhs)
+            rightBool = createTemp(); cmp_ne rightBool, right, zero
+            copy dest, rightBool
+            jump bb_end
+
+  current_bb = bb_end
+  return dest
+```
+
+#### `visitLogicORExpr` (court-circuit)
+
+Pseudo-code:
+
+```text
+visitLogicORExpr(lhs, rhs):
+  dest = createTemp()
+  zero = createTemp(); ldconst zero, 0
+  left = visit(lhs)
+  leftBool = createTemp(); cmp_ne leftBool, left, zero
+
+  creer bb_true, bb_rhs, bb_end
+  branch sur leftBool: vrai->bb_true, faux->bb_rhs
+
+  bb_true: ldconst dest, 1; jump bb_end
+  bb_rhs : right = visit(rhs)
+           rightBool = createTemp(); cmp_ne rightBool, right, zero
+           copy dest, rightBool
+           jump bb_end
+
+  current_bb = bb_end
+  return dest
+```
+
+#### `visitCallExpr`
+
+```text
+visitCallExpr(func, args):
+  dest = createTemp()
+  params = [func, dest]
+  pour arg dans args:
+    params.push(visit(arg))
+  emit call params
+  return dest
+```
+
+#### `visitReturn_stmt`
+
+```text
+visitReturn_stmt(ctx):
+  si expr presente:
+    v = visit(expr)
+  sinon:
+    v = createTemp(); ldconst v, 0
+  emit ret v
+  jump bb_epilogue
+  return v
+```
+
+#### `visitIf_stmt`
+
+```text
+visitIf_stmt(cond, thenStmt, elseStmt?):
+  creer bb_cond, bb_then, bb_end, (optionnel bb_else)
+  jump vers bb_cond
+  bb_cond.test = visit(cond)
+  branch bb_cond -> bb_then / bb_else(ou bb_end)
+
+  bb_then: visit(thenStmt); si pas de sortie, jump bb_end
+  si else:
+    bb_else: visit(elseStmt); si pas de sortie, jump bb_end
+
+  current_bb = bb_end
+```
+
+#### `visitWhile_stmt`
+
+```text
+visitWhile_stmt(cond, body):
+  creer bb_cond, bb_body, bb_end
+  jump vers bb_cond
+  bb_cond.test = visit(cond)
+  branch bb_cond -> bb_body / bb_end
+
+  push breakTargets(bb_end)
+  push continueTargets(bb_cond)
+
+  bb_body: visit(body)
+  si pas de sortie: jump bb_cond
+
+  pop continueTargets
+  pop breakTargets
+  current_bb = bb_end
+```
+
+#### `visitBreak_stmt`, `visitContinue_stmt`
+
+```text
+visitBreak_stmt:
+  si breakTargets non vide: jump breakTargets.top
+
+visitContinue_stmt:
+  si continueTargets non vide: jump continueTargets.top
+```
+
+#### `visitSwitch_stmt`
+Responsabilite:
+- evaluer l'expression switch une fois
+- creer une chaine de dispatch (cmp_eq) vers chaque case
+- supporter default
+- supporter fallthrough et break
+
+Pseudo-code simplifie:
+
+```text
+visitSwitch_stmt(expr, parts):
+  switchVal = visit(expr)
+  bb_end = new block
+
+  extraire toutes les labels case/default dans des blocks dedies
+  creer un premier block de dispatch
+
+  pour chaque case i:
+    cst = ldconst(caseValue)
+    cond = cmp_eq(switchVal, cst)
+    branch cond -> caseBlock[i], nextDispatchOrDefaultOrEnd
+
+  push breakTargets(bb_end)
+
+  parcourir parts dans l'ordre source:
+    quand label rencontre, positionner current_bb sur son block
+    sur chaque stmt, visit(stmt)
+    laisser le fallthrough si aucun jump explicite
+
+  si dernier block actif sans sortie: jump bb_end
+  pop breakTargets
+  current_bb = bb_end
+```
+
+---
+
+## 6) Backend et consequences du mode int-only
+
+Le backend reste compatible avec des structures historiques plus larges, mais le front-end actuel n'emet que:
+- des valeurs entieres
+- des operations arith/logiques/comparaison entieres
+- des sauts de controle classiques
+
+---
+
+## 7) Tests et execution
+
+### 7.1 Build
 
 ```bash
 cd compiler
@@ -376,20 +838,124 @@ make clean
 make -j4
 ```
 
-Execution d'un sous-ensemble de tests supportes:
+### 7.2 Regression recommandee (scope supporte)
 
 ```bash
-python3 ifcc-test.py testfiles/add testfiles/assignment testfiles/bloc testfiles/break-continue testfiles/comparison testfiles/cond-loops testfiles/const testfiles/decl-init testfiles/div testfiles/equality testfiles/functions testfiles/getcharputchar testfiles/if testfiles/incdec testfiles/logic testfiles/minus testfiles/mod testfiles/mul testfiles/op-assignment testfiles/return testfiles/switch testfiles/unary testfiles/unused-var testfiles/while
+python3 ifcc-test.py testfiles
 ```
 
-## 9. Regle d'evolution
+Note:
+- `testfiles/undefined` fait partie de la validation mais ne donne jamais le bon résultat (comportements C non definis).
 
-Si une fonctionnalite est ajoutee:
+---
 
-1. Etendre la grammaire de maniere minimale
-2. Etendre d'abord SymbolVisitor (regles semantiques)
-3. Etendre ensuite IRVisitor (generation)
-4. Ajouter tests `valid` + `invalid`
-5. Mettre a jour README + MAINTENANCE
+## 8) Regles d'evolution (ordre obligatoire)
 
-Ordre inverse interdit (ne jamais ajouter IR sans garde semantique explicite).
+Si une nouvelle feature est ajoutee:
+
+1. Etendre `ifcc.g4` minimalement
+2. Ajouter/adapter les regles semantiques dans `SymbolVisitor`
+3. Ajouter la generation IR dans `IRVisitor`
+4. Ajouter tests `valid` et `invalid`
+5. Mettre a jour README + ce fichier
+
+Regle forte:
+- ne jamais ajouter de generation IR sans barriere semantique explicite.
+
+---
+
+## 9) Exemple fil-rouge (du source au CFG)
+
+Objectif de cette section:
+- montrer le chemin d'un mini programme dans toutes les passes
+- nommer les fonctions qui interviennent et ce qu'elles produisent
+
+Programme exemple:
+
+```c
+int add(int x, int y) {
+    int z = x + y;
+    return z;
+}
+
+int main() {
+    int a = 2;
+    int b = 3;
+    if (a < b) {
+        a += 10;
+    }
+    return add(a, b);
+}
+```
+
+### 9.1 Parsing (ANTLR)
+
+Points cle:
+- `prog` contient 2 `function_decl`
+- la declaration `int z = x + y;` est un `declare_stmt` avec `declarator(VAR, expr)`
+- `a += 10` est un `AssignExpr` (operateur compose)
+- `return add(a, b)` est un `Return_stmt` avec `CallExpr`
+
+### 9.2 Passe semantique (`SymbolVisitor`)
+
+Ordre logique:
+
+```text
+visitProg
+  -> predeclare add/main dans functionTable
+  -> visitFunction_decl(add)
+     -> scope params x,y
+     -> visitDeclare_stmt(z = x + y)
+        -> visitAddSubExpr(x,y)
+     -> visitReturn_stmt(return z)
+  -> visitFunction_decl(main)
+     -> visitDeclare_stmt(a = 2)
+     -> visitDeclare_stmt(b = 3)
+     -> visitIf_stmt
+        -> visitCompareExpr(a < b)
+        -> visitAssignExpr(a += 10)
+     -> visitReturn_stmt(return add(a,b))
+        -> visitCallExpr(add,[a,b])
+  -> checkUnusedVariables
+```
+
+Effet concret sur les tables:
+- `functionTable[add] = {returnType=Int, arity=2, ...}`
+- `functionTable[main] = {returnType=Int, arity=0, ...}`
+- `table` contient des noms uniques (`x_0`, `y_1`, `z_2`, `a_3`, `b_4`, ...)
+- chaque lecture/ecriture marque `isUsed = true`
+
+### 9.3 Passe IR (`IRVisitor`)
+
+Idee generale:
+- un CFG par fonction
+- chaque expression cree des temporaires (`tmpN`)
+- chaque controle (`if`, `while`, `switch`) cree des basic blocks relies
+
+Pseudo-trace simplifiee pour `main`:
+
+```text
+entry -> prologue -> body
+
+body:
+  t0 = ldconst 2
+  copy a_3, t0
+  t1 = ldconst 3
+  copy b_4, t1
+  t2 = cmp_lt a_3, b_4
+  branch t2 -> if_then / if_end
+
+if_then:
+  t3 = ldconst 10
+  add a_3, a_3, t3
+  jump if_end
+
+if_end:
+  t4 = call add, dest=t4, args=[a_3,b_4]
+  ret t4
+  jump epilogue
+```
+
+Resultat:
+- CFG `main` avec blocs `body`, `if_then`, `if_end`, `epilogue`
+- IR strictement entier, sans operations memoire indirecte
