@@ -53,6 +53,10 @@ antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx) {
     scopeTable.push_back(map<string, string>());
     for (auto stmt : ctx->stmt()) {
         visit(stmt);
+        // Stop generating instructions after return.
+        if (current_bb->exit_true != nullptr) {
+            break;
+        }
     }
     scopeTable.pop_back();
     return 0;

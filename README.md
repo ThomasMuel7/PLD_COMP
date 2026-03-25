@@ -233,6 +233,8 @@ Pour voir la répartition des tâches et l'avancement du projet, consultez le do
 [Répartition des tâches PLD-Comp](https://docs.google.com/spreadsheets/d/1ENracvxvhSuJ-HFS7LvaUH-EdFnAlYx0OItCOUCQky8/edit?gid=0#gid=0)
 
 ## 10. Pourquoi certains tests ne fonctionnent pas
+
+### 10.1 getchar(), putchar()
 Dans le cas des tests de la fonction getchar() nous ne pouvons pas inclure dans les testfiles des tests qui attendent un char indefiniement. Nous les avons cependant testés en apparté et en entrant une valeur nous même, les tests rendent des resultats valides. 
 Exemple de test qui rentre dans ce cas la : 
 
@@ -242,17 +244,9 @@ int main() {
     return x;
 }
 
-### 10.1 Dossier de tests "testfiles/undefined"
+### 10.2 Dossier de tests "testfiles/undefined"
 
 Ces programmes n'ont pas de comportement défini et peuvent passer la compilation gcc ou pas (gcc accepte des codes illogiques par legacy).
-
-#### 10.2.1 Règle du "Maximal Munch" dans GCC
-
-GCC concatène les deux tirets de `5 -- 5` en un seul token `--` (decrément). Appliqué à la constante `5`, cela génère une erreur : on ne peut pas décrémenter une lvalue non modifiable.
-
-#### 10.2.2 Pourquoi la grammaire `ifcc.g4` l'accepte
-
-La grammaire a une nouvelle règle pour `--` à la plus haute priorité; cependant, le parser ne connaît pas, ce qui renvoie également une erreur.
 
 ### 10.3 testfiles-div-invalid-37_division_0 et testfiles-div-invalid-37_division_0
 
