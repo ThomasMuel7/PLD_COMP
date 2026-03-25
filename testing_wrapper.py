@@ -25,8 +25,6 @@ def detect_target():
             return "arm"
         elif arch in ["i386", "x86_64"]:
             return "x86"
-        else:  # i386, x86_64, etc.
-            return "x86"
     except FileNotFoundError:
         # 'arch' non disponible (Linux, etc.), fallback sur platform
         if platform.system() == "Darwin" and platform.machine() == "arm64":
