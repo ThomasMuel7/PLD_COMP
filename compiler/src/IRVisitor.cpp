@@ -11,7 +11,7 @@ string IRVisitor::resolveVariable(const string& originalName) {
             return scopeTable[i][originalName];
         }
     }
-    return originalName;
+    return "";
 }
 
 string IRVisitor::createTemp() {
@@ -59,12 +59,39 @@ antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx) {
 }
 
 antlrcpp::Any IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
-    for (auto var : ctx->VAR()) {
-        string originalName = var->getText();
+    for (auto elmtCtx : ctx->declare_elmt())
+    {
+        visit(elmtCtx);
+    }
+    return 0;
+}
+
+antlrcpp::Any IRVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx)
+{
+    if (ctx->VAR())
+    {
+        string originalName = ctx->VAR()->getText();
         string uniqueName = originalName + "_" + to_string(uniqueVarId++);
         scopeTable.back()[originalName] = uniqueName;
     }
+    if (ctx->assign_stmt())
+    {
+        string originalName = ctx->assign_stmt()->VAR()->getText();
+        string uniqueName = originalName + "_" + to_string(uniqueVarId++);
+        scopeTable.back()[originalName] = uniqueName;
+        visit(ctx->assign_stmt());
+    }
     return 0;
+}
+
+antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
+{
+    string rightVar = std::any_cast<string>(visit(ctx->expr()));
+    string originalName = ctx->VAR()->getText();
+    string uniqueName = resolveVariable(originalName);
+    current_bb->add_IRInstr(IRInstr::copy, {uniqueName, rightVar});
+
+    return uniqueName;
 }
 
 antlrcpp::Any IRVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx) {
