@@ -20,7 +20,7 @@ declare_stmt : 'int' declare_elmt (',' declare_elmt)* ;
 declare_elmt : VAR | assign_stmt ;
 assign_stmt : VAR '=' expr ;
 
-return_stmt : 'return' expr? ';' ;
+return_stmt : 'return' expr? ;
 
 if_stmt : 'if' '(' expr ')' stmt ('else' stmt)? ; 
 
