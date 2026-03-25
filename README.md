@@ -98,6 +98,7 @@ ifcc -target x86   # génère du code x86-64
 ifcc -target arm   # génère du code AArch64
 Selon ce flag, le compilateur instancie automatiquement le backend correspondant et génère le code assembleur adapté à l’architecture cible.
 Sans specification de -target, le code generer et sous x86.
+En utilisant make tests, le testing_wrapper.py detecte automatiquement l'architecture utilise par le shell.
 
 ## 5. Structure du projet
 
