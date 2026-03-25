@@ -14,50 +14,74 @@
 
 using namespace antlr4;
 using namespace std;
-
-int main(int argn, const char **argv) {
+int main(int argc, const char **argv) {
   stringstream in;
-  if (argn == 2)
-  {
-    ifstream lecture(argv[1]);
-    in << lecture.rdbuf();
+  string target = "x86";  
+  string inputFile;
+
+  for (int i = 1; i < argc; i++) {
+    string arg = argv[i];
+
+    if (arg == "-target" && i + 1 < argc) {
+      target = argv[++i];
+    } else {
+      inputFile = arg;
+    }
   }
-  else
-  {
-    cerr << "usage: ifcc path/to/file.c" << endl;
+
+  if (inputFile.empty()) {
+    cerr << "usage: ifcc [-target x86|arm] path/to/file.c" << endl;
     exit(1);
   }
 
-  ANTLRInputStream input(in.str());
+  //  Lecture fichier
+  ifstream lecture(inputFile);
+  if (!lecture) {
+    cerr << "Erreur ouverture fichier" << endl;
+    exit(1);
+  }
+  in << lecture.rdbuf();
 
+  //  ANTLR
+  ANTLRInputStream input(in.str());
   ifccLexer lexer(&input);
   CommonTokenStream tokens(&lexer);
-
   tokens.fill();
 
   ifccParser parser(&tokens);
-  tree::ParseTree *tree = parser.prog();
+  ifccParser::AxiomContext* tree = parser.axiom();
 
-  if (parser.getNumberOfSyntaxErrors() != 0)
-  {
-    cerr << "Erreur de syntaxe détectée lors du parsing." << endl;
+  if (parser.getNumberOfSyntaxErrors() != 0) {
+    cerr << "Erreur de syntaxe détectée." << endl;
     exit(1);
   }
 
+  //  Analyse sémantique
   SymbolVisitor visitor;
-  visitor.visit(tree);
+  visitor.visit(tree->prog());
 
-  if (visitor.hasError)
-  {
-    cerr << "Erreur de sémantique détectée lors de la visite du symbole." << endl;
+  if (visitor.hasError) {
+    cerr << "Erreur sémantique." << endl;
     return 1;
   }
 
+  //  IR
   IRVisitor irVisitor(visitor.table, visitor.currentOffset);
-  irVisitor.visit(tree);
+  irVisitor.visit(tree->prog());
 
-  x86Backend backend({irVisitor.getCFG()}, visitor.table);
-  backend.translate();
-  
+  //  Backend
+  backend* backendInstance = nullptr;
+
+  if (target == "x86") {
+    backendInstance = new x86Backend({irVisitor.getCFG()}, visitor.table);
+  } else if (target == "arm") {
+    backendInstance = new ArmBackend({irVisitor.getCFG()}, visitor.table);
+  } else {
+    cerr << "Target inconnue: " << target << endl;
+    return 1;
+  }
+
+  backendInstance->translate();
+
   return 0;
 }

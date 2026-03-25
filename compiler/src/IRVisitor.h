@@ -2,18 +2,22 @@
 #include "antlr4-runtime.h"
 #include "../generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
+#include "ScopeTable.h"
 #include "IR.h"
 #include "BasicBlock.h"
 #include "CFG.h"
 
-class IRVisitor : public ifccBaseVisitor
-{
+class IRVisitor : public ifccBaseVisitor {
 private:
     CFG *cfg;
     BasicBlock *current_bb;
     SymbolTable &table;
+    ScopeTable scopeTable;
     int currentOffset;
     int tempCounter = 0;
+    int uniqueVarId = 0;
+
+    std::string resolveVariable(const std::string& originalName);
 
 public:
     IRVisitor(SymbolTable &t, int startoffset);
@@ -24,6 +28,7 @@ public:
     std::string createTemp();
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
+    virtual antlrcpp::Any visitBlock(ifccParser::BlockContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;
     virtual antlrcpp::Any visitAssignExpr(ifccParser::AssignExprContext *ctx) override;
     virtual antlrcpp::Any visitReturn_stmt(ifccParser::Return_stmtContext *ctx) override;

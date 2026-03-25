@@ -36,3 +36,19 @@ private:
   std::string generate(IRInstr *instr) override;
   std::string generatePrologue();
 };
+
+class ArmBackend : public backend
+{
+public:
+  ArmBackend(const std::vector<CFG *> &cfgs, const SymbolTable &symbolTable);
+
+  std::string getOffset(const std::string &varName);
+  void translate() override;
+
+private:
+  int computeFrameSize() const;
+  std::string loadBinaryOperands(IRInstr *instr);
+  std::string saveResultEax(IRInstr *instr);
+  std::string generate(IRInstr *instr) override;
+  std::string generatePrologue();
+};

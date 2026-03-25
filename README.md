@@ -86,17 +86,18 @@ Notes :
 
 ## 4. Génération de code
 
-`CodeGenVisitor` produit de l'assembleur x86-64 (syntaxe AT&T) sur la sortie standard.
+# 4.1 Architecture
+La génération repose sur une hiérarchie :
 
-Éléments implémentés :
+backend (abstrait)
+├── x86Backend   (x86-64, AT&T)
+└── ArmBackend   (AArch64, Apple Silicon)
 
-- étiquette d'entrée `main` (et `_main` sur macOS)
-- prologue/épilogue minimal (`pushq %rbp`, `movq %rsp, %rbp`, `popq %rbp`, `ret`)
-- stockage des variables locales par offsets négatifs relatifs à `%rbp`
-- évaluation des expressions dans `%eax`
-- opérations arithmétiques et bit-à-bit
-- division/modulo via `cltd` + `idivl`
-- comparaisons avec production de booléen `0/1`
+# Le backend utilisé est choisi via un flag en ligne de commande lors de l’exécution de ifcc :
+ifcc -target x86   # génère du code x86-64
+ifcc -target arm   # génère du code AArch64
+Selon ce flag, le compilateur instancie automatiquement le backend correspondant et génère le code assembleur adapté à l’architecture cible.
+Sans specification de -target, le code generer et sous x86.
 
 ## 5. Structure du projet
 

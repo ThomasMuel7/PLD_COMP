@@ -1,36 +1,71 @@
 #include "SymbolVisitor.h"
 #include <iostream>
 #include <string>
+#include <map>
 
 using namespace std;
 
+SymbolVisitor::SymbolVisitor() {
+    scopeTable.push_back(map<string, string>());
+}
+
+string SymbolVisitor::resolveVariable(const string& originalName) {
+    for (int i = scopeTable.size() - 1; i >= 0; i--) {
+        if (scopeTable[i].find(originalName) != scopeTable[i].end()) {
+            return scopeTable[i][originalName];
+        }
+    }
+    return "";
+}
+
+antlrcpp::Any SymbolVisitor::visitBlock(ifccParser::BlockContext *ctx) {
+    scopeTable.push_back(map<string, string>());
+    for (auto stmt : ctx->stmt()) {
+        visit(stmt);
+    }
+    scopeTable.pop_back();
+    return 0;
+}
+
 antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
     for (auto var : ctx->VAR()) {
-        string varName = var->getText();
-            
-        if (table.find(varName) != table.end()) {
-            cerr << "Erreur: la variable '" << varName << "' est déjà déclarée." << endl;
+        string originalName = var->getText();
+        if (scopeTable.back().find(originalName) != scopeTable.back().end()) {
+            cerr << "Erreur: la variable '" << originalName << "' est déjà déclarée dans ce bloc." << endl;
             hasError = true;
         } else {
+            string uniqueName = originalName + "_" + to_string(uniqueVarId++);
+            scopeTable.back()[originalName] = uniqueName;
             currentOffset -= 4;
-            table[varName] = {currentOffset, false};
+            table[uniqueName] = {currentOffset, false};
         }
     }
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
-{
-    string varName = ctx->VAR()->getText();
-    
-    if (table.find(varName) == table.end()) {
-        cerr << "Erreur: la variable '" << varName << "' n'est pas déclarée." << endl;
+antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
+    string originalName = ctx->VAR()->getText();
+    string uniqueName = resolveVariable(originalName);
+    if (uniqueName == "") {
+        cerr << "Erreur: la variable '" << originalName << "' utilisée dans l'expression n'est pas déclarée." << endl;
         hasError = true;
     } else {
-        table[varName].isUsed = true;
+        table[uniqueName].isUsed = true;
     }
     
-    visit(ctx->expr()); 
+    return 0;
+}
+
+antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx) {
+    string originalName = ctx->VAR()->getText();
+    string uniqueName = resolveVariable(originalName);
+    if (uniqueName == "") {
+        cerr << "Erreur: tentative d'assignation sur la variable non déclarée '" << originalName << "'." << endl;
+        hasError = true;
+    } else {
+        table[uniqueName].isUsed = true;
+    }
+    visit(ctx->expr());
     return 0;
 }
 
@@ -51,23 +86,4 @@ antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprConte
         visit(ctx->expr(1));
     }
     return 0;
-}
-
-antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
-    string varName = ctx->VAR()->getText();
-    if (table.find(varName) == table.end()) {
-        cerr << "Erreur: la variable '" << varName << "' utilisée dans l'expression n'est pas déclarée." << endl;
-        hasError = true;
-    } else {
-        table[varName].isUsed = true;
-    }
-    return 0;
-}
-
-void SymbolVisitor::checkUnusedVariables() {
-    for (const auto& pair : table) {
-        if (!pair.second.isUsed) {
-            cerr << "Warning: la variable '" << pair.first << "' est déclarée mais non utilisée." << endl;
-        }
-    }
 }
