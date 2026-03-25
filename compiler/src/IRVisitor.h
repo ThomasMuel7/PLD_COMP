@@ -11,6 +11,7 @@ class IRVisitor : public ifccBaseVisitor {
 private:
     CFG *cfg;
     BasicBlock *current_bb;
+    BasicBlock *bb_epilogue;
     SymbolTable &table;
     ScopeTable scopeTable;
     int currentOffset;
@@ -18,13 +19,13 @@ private:
     int uniqueVarId = 0;
 
     std::string resolveVariable(const std::string& originalName);
+    std::string gen_unique_id(antlr4::ParserRuleContext *ctx);
 
 public:
     IRVisitor(SymbolTable &t, int startoffset);
 
     CFG *getCFG() { return cfg; }
     int getCurrentOffset() const { return currentOffset; }
-
     std::string createTemp();
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
@@ -44,5 +45,8 @@ public:
     virtual antlrcpp::Any visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx) override;
     virtual antlrcpp::Any visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx) override;
     virtual antlrcpp::Any visitCallExpr(ifccParser::CallExprContext *ctx) override;
-    virtual antlrcpp::Any visitExpr_stmt(ifccParser::Expr_stmtContext *ctx) override;
+    virtual antlrcpp::Any visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx) override;
+    virtual antlrcpp::Any visitLogicORExpr(ifccParser::LogicORExprContext *ctx) override;
+    virtual antlrcpp::Any visitIf_stmt(ifccParser::If_stmtContext *ctx) override;
+    virtual antlrcpp::Any visitWhile_stmt(ifccParser::While_stmtContext *ctx) override;
 };

@@ -2,7 +2,8 @@
 #include "CFG.h"
 #include "IR.h"
 
-BasicBlock::BasicBlock(CFG *cfg, const string &label) : cfg(cfg), label(label)
+BasicBlock::BasicBlock(CFG *cfg, const string &label)
+    : exit_true(nullptr), exit_false(nullptr), label(label), cfg(cfg), test_var_name("")
 {
   cfg->blocks.push_back(this);
 }

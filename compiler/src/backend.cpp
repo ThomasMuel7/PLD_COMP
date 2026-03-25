@@ -6,21 +6,6 @@ using namespace std;
 x86Backend::x86Backend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
-string x86Backend::generatePrologue()
-{
-  string code = "";
-  #ifdef __APPLE__
-    code += ".globl _main\n";
-    cout << " _main: \n";
-  #else
-    code += ".globl main\n";
-    cout << " main: \n";
-  #endif
-  cout << "    pushq %rbp\n";
-  cout << "    movq %rsp, %rbp\n";
-  return code;
-}
-
 string x86Backend::getOffset(const string &varName)
 {
   auto it = symbolTable.find(varName);
@@ -45,21 +30,53 @@ string x86Backend::saveResultEax(IRInstr *instr)
 
 void x86Backend::translate()
 {
-  cout << generatePrologue();
+  #ifdef __APPLE__
+    cout << ".globl _main\n";
+  #else
+    cout << ".globl main\n";
+  #endif
+
   for (CFG *cfg : cfgs)
   {
     for (BasicBlock *bb : cfg->blocks)
     {
-      for (IRInstr *instr : bb->instrs)
+      if (bb->label == "prologue") {
+        #ifdef __APPLE__
+          cout << " _main:\n";
+        #else
+          cout << " main:\n";
+        #endif
+        cout << "    pushq %rbp\n";
+        cout << "    movq %rsp, %rbp\n";
+      } 
+      else if (bb->label == "epilogue") {
+        cout << bb->label << ":\n";
+        cout << "    popq %rbp\n";
+        cout << "    ret\n";
+        continue;
+      } 
+      else {
+        cout << bb->label << ":\n";
+        for (IRInstr *instr : bb->instrs)
+        {
+          cout << generate(instr);
+        }
+      }
+      if (bb->exit_true != nullptr && bb->exit_false != nullptr)
       {
-        cout << generate(instr);
+        cout << "    cmpl $0, " << getOffset(bb->test_var_name) << "\n";
+        cout << "    je " << bb->exit_false->label << "\n";
+        cout << "    jmp " << bb->exit_true->label << "\n";
+      }
+      else if (bb->exit_true != nullptr)
+      {
+        cout << "    jmp " << bb->exit_true->label << "\n";
       }
     }
   }
 }
 
-string x86Backend::generate(IRInstr *instr)
-{
+string x86Backend::generate(IRInstr *instr) {
   string code = "";
   switch (instr->getOp())
   {
@@ -162,11 +179,10 @@ string x86Backend::generate(IRInstr *instr)
     code += "    movl %eax, " + getOffset(dest) + "\n";
     break;
   }
-  case IRInstr::ret:
+  case IRInstr::ret: {
     code += "    movl " + getOffset(instr->getParams()[0]) + ", %eax\n";
-    code += "    popq %rbp\n";
-    code += "    ret\n";
     break;
+  }
   default:
     break;
   }
@@ -187,22 +203,6 @@ int ArmBackend::computeFrameSize() const
   int size = numVars * 4;
   if (size % 16 != 0) size += 16 - (size % 16);
   return size;
-}
-
-string ArmBackend::generatePrologue()
-{
-  int frameSize = computeFrameSize();
-
-  string code = ".text\n";
-#ifdef __APPLE__
-  code += ".globl _main\n";
-  code += "_main:\n";
-#else
-  code += ".globl main\n";
-  code += "main:\n";
-#endif
-  code += "    sub sp, sp, #" + to_string(frameSize) + "\n";
-  return code;
 }
 
 string ArmBackend::getOffset(const string &varName)
@@ -231,14 +231,46 @@ string ArmBackend::saveResultEax(IRInstr *instr)
 
 void ArmBackend::translate()
 {
-  cout << generatePrologue();
+  int frameSize = computeFrameSize();
   for (CFG *cfg : cfgs)
   {
     for (BasicBlock *bb : cfg->blocks)
     {
-      for (IRInstr *instr : bb->instrs)
+      if (bb->label == "prologue") {
+        cout << ".text\n";
+#ifdef __APPLE__
+        cout << ".globl _main\n";
+        cout << "_main:\n";
+#else
+        cout << ".globl main\n";
+        cout << "main:\n";
+#endif
+        cout << "    sub sp, sp, #" << frameSize << "\n";
+      }
+      else if (bb->label == "epilogue") {
+        cout << bb->label << ":\n";
+        cout << "    add sp, sp, #" << frameSize << "\n";
+        cout << "    ret\n";
+        continue;
+      }
+      else {
+        cout << bb->label << ":\n";
+        for (IRInstr *instr : bb->instrs)
+        {
+          cout << generate(instr);
+        }
+      }
+
+      if (bb->exit_true != nullptr && bb->exit_false != nullptr)
       {
-        cout << generate(instr);
+        cout << "    ldr w8, [sp, #" << getOffset(bb->test_var_name) << "]\n";
+        cout << "    cmp w8, #0\n";
+        cout << "    beq " << bb->exit_false->label << "\n";
+        cout << "    b " << bb->exit_true->label << "\n";
+      }
+      else if (bb->exit_true != nullptr)
+      {
+        cout << "    b " << bb->exit_true->label << "\n";
       }
     }
   }
@@ -262,15 +294,17 @@ string ArmBackend::generate(IRInstr *instr)
     code += "    str w8, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
     break;
   }
-  case IRInstr::copy:
+  case IRInstr::copy: {
     code += "    ldr w8, [sp, #" + getOffset(instr->getParams()[1]) + "]\n";
     code += "    str w8, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
     break;
-  case IRInstr::add:
+  }
+  case IRInstr::add: {
     code += loadBinaryOperands(instr);
     code += "    add w0, w0, w1\n";
     code += saveResultEax(instr);
     break;
+  }
   case IRInstr::sub:
     code += loadBinaryOperands(instr);
     code += "    sub w0, w0, w1\n";
@@ -334,15 +368,28 @@ string ArmBackend::generate(IRInstr *instr)
     else if (instr->getOp() == IRInstr::cmp_ge) code += "    cset w0, ge\n";
     code += saveResultEax(instr);
     break;
-  case IRInstr::ret: {
-    int frameSize = computeFrameSize();
-    code += "    ldr w0, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
-    code += "    add sp, sp, #" + to_string(frameSize) + "\n";
-    code += "    ret\n";
+  case IRInstr::call: {
+    const vector<string> &p = instr->getParams();
+    string funcName = p[0];
+    string dest = p[1];
+    int argc = (int)p.size() - 2;
+    static const vector<string> argRegs = {
+      "w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"
+    };
+    for (int i = 0; i < argc && i < (int)argRegs.size(); i++) {
+      code += "    ldr " + argRegs[i] + ", [sp, #" + getOffset(p[i + 2]) + "]\n";
+    }
+    code += "    bl " + funcName + "\n";
+    code += "    str w0, [sp, #" + getOffset(dest) + "]\n";
     break;
   }
-  default:
+  case IRInstr::ret: {
+    code += "    ldr w0, [sp, #" + getOffset(instr->getParams()[0]) + "]\n";
     break;
+  }
+  default: {
+    break;
+  }
   }
   return code;
 }
