@@ -256,3 +256,7 @@ Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pa
 ### 10.4 testfiles-while-invalid-05_while_double_semicolon
 
 Nous n'avons pas pris en compte la possibilité d'avoir une instruction vide. Donc le fait d'avoir deux ";" qui se suivent n'est pas une erreur pour gcc mais ça en est une pour notre compilateur.
+
+### 10.5 --testfiles-getcharputchar / valid 01 / 02 / 03 / 07
+
+Sous notre version de gcc (clang) sous mac putchar n'existe pas, gcc le considere comme un programme invalide alors que ce n'est pas le cas.
