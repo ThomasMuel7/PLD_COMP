@@ -66,16 +66,16 @@ int main(int argc, const char **argv) {
   }
 
   //  IR
-  IRVisitor irVisitor(visitor.table, visitor.currentOffset);
+  IRVisitor irVisitor(visitor.table, visitor.functionTable, visitor.currentOffset);
   irVisitor.visit(tree->prog());
 
   //  Backend
   backend* backendInstance = nullptr;
 
   if (target == "x86") {
-    backendInstance = new x86Backend({irVisitor.getCFG()}, visitor.table);
+    backendInstance = new x86Backend(irVisitor.getCFGs(), visitor.table);
   } else if (target == "arm") {
-    backendInstance = new ArmBackend({irVisitor.getCFG()}, visitor.table);
+    backendInstance = new ArmBackend(irVisitor.getCFGs(), visitor.table);
   } else {
     cerr << "Target inconnue: " << target << endl;
     return 1;

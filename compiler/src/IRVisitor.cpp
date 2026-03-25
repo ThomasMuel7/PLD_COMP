@@ -5,6 +5,10 @@
 
 using namespace std;
 
+static ReturnType parseReturnType(const string &typeText) {
+    return (typeText == "void") ? ReturnType::Void : ReturnType::Int;
+}
+
 string IRVisitor::resolveVariable(const string& originalName) {
     for (int i = scopeTable.size() - 1; i >= 0; i--) {
         if (scopeTable[i].find(originalName) != scopeTable[i].end()) {
@@ -25,28 +29,53 @@ string IRVisitor::gen_unique_id(antlr4::ParserRuleContext *ctx){
         return std::to_string(ctx->start->getLine()) + "_" + std::to_string(ctx->start->getCharPositionInLine());
     }
 
-IRVisitor::IRVisitor(SymbolTable &t, int startoffset) : table(t), currentOffset(startoffset) {
-    cfg = new CFG();
+IRVisitor::IRVisitor(SymbolTable &t, const FunctionTable &ft, int startoffset)
+    : cfg(nullptr), current_bb(nullptr), bb_epilogue(nullptr), table(t), functionTable(ft), currentOffset(startoffset) {}
+
+antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx) {
+    for (auto fn : ctx->function_decl()) {
+        visit(fn);
+    }
+    return 0;
+}
+
+antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ctx) {
+    string functionName = ctx->VAR()->getText();
+    ReturnType retType = parseReturnType(ctx->type()->getText());
+
+    cfg = new CFG(functionName, retType == ReturnType::Void);
+    cfgs.push_back(cfg);
+
     BasicBlock* bb_prologue = new BasicBlock(cfg, "prologue");
     bb_epilogue = new BasicBlock(cfg, "epilogue");
     BasicBlock* bb_body = new BasicBlock(cfg, "body");
-    
+
     cfg->entry = bb_prologue;
     bb_prologue->add_exit(bb_body);
-    
+
     current_bb = bb_body;
     scopeTable.push_back(map<string, string>());
-}
 
-antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx) {
+    if (ctx->param_list() != nullptr) {
+        for (auto p : ctx->param_list()->param()) {
+            string originalName = p->VAR()->getText();
+            string uniqueName = originalName + "_" + to_string(uniqueVarId++);
+            scopeTable.back()[originalName] = uniqueName;
+            cfg->paramVarNames.push_back(uniqueName);
+        }
+    }
+
     visit(ctx->block());
+
     if (current_bb->exit_true == nullptr) {
         string dest = createTemp();
         current_bb->add_IRInstr(IRInstr::ldconst, {dest, "0"});
         current_bb->add_IRInstr(IRInstr::ret, {dest});
         current_bb->add_exit(bb_epilogue);
     }
-    return cfg;
+
+    scopeTable.pop_back();
+    return 0;
 }
 
 antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx) {
@@ -271,7 +300,13 @@ antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx) {
 }
 
 antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
-    string expr = std::any_cast<string>(visit(ctx->expr()));
+    string expr;
+    if (ctx->expr() != nullptr) {
+        expr = std::any_cast<string>(visit(ctx->expr()));
+    } else {
+        expr = createTemp();
+        current_bb->add_IRInstr(IRInstr::ldconst, {expr, "0"});
+    }
     current_bb->add_IRInstr(IRInstr::ret, {expr});
     current_bb->add_exit(bb_epilogue);
     return expr;

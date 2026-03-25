@@ -9,10 +9,12 @@
 
 class IRVisitor : public ifccBaseVisitor {
 private:
+    std::vector<CFG *> cfgs;
     CFG *cfg;
     BasicBlock *current_bb;
     BasicBlock *bb_epilogue;
     SymbolTable &table;
+    const FunctionTable &functionTable;
     ScopeTable scopeTable;
     int currentOffset;
     int tempCounter = 0;
@@ -22,13 +24,14 @@ private:
     std::string gen_unique_id(antlr4::ParserRuleContext *ctx);
 
 public:
-    IRVisitor(SymbolTable &t, int startoffset);
+    IRVisitor(SymbolTable &t, const FunctionTable &ft, int startoffset = 0);
 
-    CFG *getCFG() { return cfg; }
+    std::vector<CFG *> getCFGs() const { return cfgs; }
     int getCurrentOffset() const { return currentOffset; }
     std::string createTemp();
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
+    virtual antlrcpp::Any visitFunction_decl(ifccParser::Function_declContext *ctx) override;
     virtual antlrcpp::Any visitBlock(ifccParser::BlockContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;
     virtual antlrcpp::Any visitAssignExpr(ifccParser::AssignExprContext *ctx) override;

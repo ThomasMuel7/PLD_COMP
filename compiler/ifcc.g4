@@ -2,7 +2,15 @@ grammar ifcc;
 
 axiom : prog EOF ;
 
-prog : 'int' 'main' '(' ')' block;
+prog : function_decl+;
+
+function_decl : type VAR '(' param_list? ')' block;
+
+type : 'int' | 'void';
+
+param_list : param (',' param)*;
+
+param : 'int' VAR;
 
 block : '{'stmt*'}' ;
 
@@ -10,7 +18,7 @@ stmt : declare_stmt | return_stmt | expr ';' | block | if_stmt | while_stmt ;
 
 declare_stmt : 'int' VAR (',' VAR)* ';' ;
 
-return_stmt : 'return' expr ';' ;
+return_stmt : 'return' expr? ';' ;
 
 if_stmt : 'if' '(' expr ')' stmt ('else' stmt)? ; 
 

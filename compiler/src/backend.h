@@ -31,6 +31,7 @@ public:
   void translate() override;
 
 private:
+  int computeFrameSize() const;
   std::string loadBinaryOperands(IRInstr *instr);
   std::string saveResultEax(IRInstr *instr);
   std::string generate(IRInstr *instr) override;

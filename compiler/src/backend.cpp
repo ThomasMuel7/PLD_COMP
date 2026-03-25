@@ -1,10 +1,26 @@
 #include "backend.h"
+#include <algorithm>
 #include <iostream>
 
 using namespace std;
 
 x86Backend::x86Backend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
+
+int x86Backend::computeFrameSize() const
+{
+  int minOffset = 0;
+  for (const auto &entry : symbolTable)
+  {
+    minOffset = std::min(minOffset, entry.second.index);
+  }
+  int size = -minOffset;
+  if (size % 16 != 0)
+  {
+    size += 16 - (size % 16);
+  }
+  return size;
+}
 
 string x86Backend::getOffset(const string &varName)
 {
@@ -30,33 +46,52 @@ string x86Backend::saveResultEax(IRInstr *instr)
 
 void x86Backend::translate()
 {
-  #ifdef __APPLE__
-    cout << ".globl _main\n";
-  #else
-    cout << ".globl main\n";
-  #endif
-
+  int frameSize = computeFrameSize();
   for (CFG *cfg : cfgs)
   {
+    string labelPrefix = cfg->functionName + "_";
+    auto asmLabel = [&](BasicBlock *bb) {
+      if (bb->label == "prologue") {
+        return cfg->functionName;
+      }
+      return labelPrefix + bb->label;
+    };
+
+#ifdef __APPLE__
+    cout << ".globl _" << cfg->functionName << "\n";
+#else
+    cout << ".globl " << cfg->functionName << "\n";
+#endif
+
     for (BasicBlock *bb : cfg->blocks)
     {
       if (bb->label == "prologue") {
-        #ifdef __APPLE__
-          cout << " _main:\n";
-        #else
-          cout << " main:\n";
-        #endif
+#ifdef __APPLE__
+        cout << " _" << cfg->functionName << ":\n";
+#else
+        cout << " " << cfg->functionName << ":\n";
+#endif
         cout << "    pushq %rbp\n";
         cout << "    movq %rsp, %rbp\n";
+        if (frameSize > 0) {
+          cout << "    subq $" << frameSize << ", %rsp\n";
+        }
+        static const vector<string> argRegs = {
+          "%edi", "%esi", "%edx", "%ecx", "%r8d", "%r9d"
+        };
+        int paramCount = (int)cfg->paramVarNames.size();
+        for (int i = 0; i < paramCount && i < (int)argRegs.size(); i++) {
+          cout << "    movl " << argRegs[i] << ", " << getOffset(cfg->paramVarNames[i]) << "\n";
+        }
       } 
       else if (bb->label == "epilogue") {
-        cout << bb->label << ":\n";
-        cout << "    popq %rbp\n";
+        cout << asmLabel(bb) << ":\n";
+        cout << "    leave\n";
         cout << "    ret\n";
         continue;
       } 
       else {
-        cout << bb->label << ":\n";
+        cout << asmLabel(bb) << ":\n";
         for (IRInstr *instr : bb->instrs)
         {
           cout << generate(instr);
@@ -65,12 +100,12 @@ void x86Backend::translate()
       if (bb->exit_true != nullptr && bb->exit_false != nullptr)
       {
         cout << "    cmpl $0, " << getOffset(bb->test_var_name) << "\n";
-        cout << "    je " << bb->exit_false->label << "\n";
-        cout << "    jmp " << bb->exit_true->label << "\n";
+        cout << "    je " << asmLabel(bb->exit_false) << "\n";
+        cout << "    jmp " << asmLabel(bb->exit_true) << "\n";
       }
       else if (bb->exit_true != nullptr)
       {
-        cout << "    jmp " << bb->exit_true->label << "\n";
+        cout << "    jmp " << asmLabel(bb->exit_true) << "\n";
       }
     }
   }
@@ -234,27 +269,42 @@ void ArmBackend::translate()
   int frameSize = computeFrameSize();
   for (CFG *cfg : cfgs)
   {
+    string labelPrefix = cfg->functionName + "_";
+    auto asmLabel = [&](BasicBlock *bb) {
+      if (bb->label == "prologue") {
+        return cfg->functionName;
+      }
+      return labelPrefix + bb->label;
+    };
+
     for (BasicBlock *bb : cfg->blocks)
     {
       if (bb->label == "prologue") {
         cout << ".text\n";
 #ifdef __APPLE__
-        cout << ".globl _main\n";
-        cout << "_main:\n";
+        cout << ".globl _" << cfg->functionName << "\n";
+        cout << "_" << cfg->functionName << ":\n";
 #else
-        cout << ".globl main\n";
-        cout << "main:\n";
+        cout << ".globl " << cfg->functionName << "\n";
+        cout << cfg->functionName << ":\n";
 #endif
         cout << "    sub sp, sp, #" << frameSize << "\n";
+        static const vector<string> argRegs = {
+          "w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"
+        };
+        int paramCount = (int)cfg->paramVarNames.size();
+        for (int i = 0; i < paramCount && i < (int)argRegs.size(); i++) {
+          cout << "    str " << argRegs[i] << ", [sp, #" << getOffset(cfg->paramVarNames[i]) << "]\n";
+        }
       }
       else if (bb->label == "epilogue") {
-        cout << bb->label << ":\n";
+        cout << asmLabel(bb) << ":\n";
         cout << "    add sp, sp, #" << frameSize << "\n";
         cout << "    ret\n";
         continue;
       }
       else {
-        cout << bb->label << ":\n";
+        cout << asmLabel(bb) << ":\n";
         for (IRInstr *instr : bb->instrs)
         {
           cout << generate(instr);
@@ -265,12 +315,12 @@ void ArmBackend::translate()
       {
         cout << "    ldr w8, [sp, #" << getOffset(bb->test_var_name) << "]\n";
         cout << "    cmp w8, #0\n";
-        cout << "    beq " << bb->exit_false->label << "\n";
-        cout << "    b " << bb->exit_true->label << "\n";
+        cout << "    beq " << asmLabel(bb->exit_false) << "\n";
+        cout << "    b " << asmLabel(bb->exit_true) << "\n";
       }
       else if (bb->exit_true != nullptr)
       {
-        cout << "    b " << bb->exit_true->label << "\n";
+        cout << "    b " << asmLabel(bb->exit_true) << "\n";
       }
     }
   }

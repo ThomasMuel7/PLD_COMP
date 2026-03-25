@@ -22,26 +22,39 @@ Avant de démarrer il faut préparer quelques fichiers qui **ne sont pas dans ce
 
 ### 2.1 Forme de programme acceptée
 
-Le parser accepte actuellement des programmes de la forme :
+Le parser accepte actuellement des programmes composés d'une ou plusieurs fonctions :
 
 ```c
+int add(int a, int b) {
+    return a + b;
+}
+
+void ping(int x) {
+    return;
+}
+
 int main() {
-    // statements
-    return // ...
+    ping(1);
+    return add(2, 3);
 }
 ```
 
 Contraintes actuelles :
 
-- une seule fonction `main`
-- pas de paramètres de fonction
-- pas de `if`, `else`, `while`, appels de fonctions, ni blocs imbriqués
+- paramètres typés `int` uniquement
+- type de retour de fonction : `int` ou `void`
+- présence obligatoire d'une fonction `main`
+- appels de fonctions supportés (avec contrôle d'arité)
+- structures de contrôle supportées (`if`, `else`, `while`, blocs imbriqués)
 
 ### 2.2 Instructions supportées
 
 - déclaration : `int a;` et `int a, b, c;`
 - affectation : `a = expr;`
-- retour : `return expr;`
+- affectations composées : `+=`, `-=`, `*=`, `/=`
+- appels de fonctions : `f(...)` en instruction
+- retour : `return expr;` et `return;`
+- `if`, `if/else`, `while`, blocs `{ ... }`
 
 ### 2.3 Expressions supportées
 
@@ -58,6 +71,8 @@ Les expressions suivantes sont parsées et générées :
 - comparaisons : `>`, `<`, `>=`, `<=`
 - égalité : `==`, `!=`
 - bit-à-bit : `&`, `^`, `|`
+- logiques parresseuses : `&&`, `||`
+- appels de fonctions dans les expressions (pour les fonctions retournant `int`)
 
 La priorité des opérateurs est gérée dans la grammaire (`ifcc.g4`) via plusieurs niveaux de règles.
 
@@ -76,6 +91,14 @@ Le visiteur `SymbolVisitor` construit une table des symboles (`SymbolTable`) et 
 - erreur si une variable est déclarée plusieurs fois
 - erreur si une variable est utilisée sans déclaration
 - erreur si une affectation vise une variable non déclarée
+- erreur si une fonction est définie plusieurs fois
+- erreur si la fonction `main` est absente
+- erreur si un paramètre de fonction est dupliqué
+- erreur si appel d'une fonction non définie
+- erreur si nombre d'arguments incohérent avec la signature
+- erreur si une fonction `void` est utilisée dans une expression
+- erreur si `return;` dans une fonction `int`
+- erreur si `return expr;` dans une fonction `void`
 - warning si une variable est déclarée mais non utilisée
 - warning si division ou modulo par constante `0` (cas détecté statiquement)
 
@@ -86,19 +109,26 @@ Notes :
 
 ## 4. Génération de code
 
-# 4.1 Architecture
+### 4.1 Architecture
 La génération repose sur une hiérarchie :
 
 backend (abstrait)
 ├── x86Backend   (x86-64, AT&T)
 └── ArmBackend   (AArch64, Apple Silicon)
 
-# Le backend utilisé est choisi via un flag en ligne de commande lors de l’exécution de ifcc :
+Le backend utilisé est choisi via un flag en ligne de commande lors de l’exécution de ifcc :
 ifcc -target x86   # génère du code x86-64
 ifcc -target arm   # génère du code AArch64
 Selon ce flag, le compilateur instancie automatiquement le backend correspondant et génère le code assembleur adapté à l’architecture cible.
-Sans specification de -target, le code generer et sous x86.
-En utilisant make tests, le testing_wrapper.py detecte automatiquement l'architecture utilise par le shell.
+Sans spécification de `-target`, la cible par défaut est `x86`.
+En utilisant `make tests`, `testing_wrapper.py` détecte automatiquement l'architecture utilisée par le shell.
+
+Le backend gère maintenant plusieurs fonctions dans un même programme :
+
+- un CFG est généré par fonction
+- les labels assembleur internes sont préfixés par fonction (évite les collisions)
+- les paramètres sont récupérés depuis les registres d'appel
+- la pile locale x86 est réservée explicitement (frame) pour supporter les appels imbriqués et la récursion
 
 ## 5. Structure du projet
 
@@ -106,12 +136,12 @@ En utilisant make tests, le testing_wrapper.py detecte automatiquement l'archite
 compiler/
     ifcc.g4              # grammaire ANTLR
     main.cpp             # point d'entrée CLI
-    SymbolTable.h        # structure des symboles
-    SymbolVisitor.*      # vérifications sémantiques
-    CodeGenVisitor.*     # génération assembleur x86-64
+    src/SymbolTable.h    # symboles variables + signatures de fonctions
+    src/SymbolVisitor.*  # vérifications sémantiques
+    src/IRVisitor.*      # AST -> IR/CFG
+    src/backend.*        # génération assembleur x86-64 / AArch64
     Makefile             # build ANTLR + C++
     config*.mk           # config machine (ANTLR jar/runtime)
-    testing_wrapper.py   # script de test automatisé
 
 testfiles/
     add/                 # tests pour l'addition
@@ -140,7 +170,9 @@ testfiles/
         ...
     unary/               # tests pour les opérateurs unaires
         ...
-    # Total : 123 programmes C de test (valides + invalides)
+    functions/           # tests liés aux fonctions
+        ...
+    # Le jeu de tests est enrichi en continu et avant l'implémentation d'une nouvelle fonctionnalité pour le compilateur
 ```
 
 ## 6. Build et exécution
@@ -166,7 +198,7 @@ echo $?
 
 ## 7. Stratégie de tests actuelle
 
-Le dossier `testfiles/` contient actuellement `123` cas, organisés par catégories d'opérateurs ou fonctionnalités.
+Le dossier `testfiles/` contient des cas organisés par catégories d'opérateurs ou fonctionnalités.
 
 ### 7.1 Structure des tests
 
@@ -183,14 +215,18 @@ Couverture actuelle (sélection) :
 
 - programmes valides : constantes, variables, priorités, parenthèses, chaînes d'opérations
 - opérateurs testés : `+ - * / %`
+- structures de contrôle : `if`, `if/else`, `while`
+- appels de fonctions (définition, arité, paramètres)
+- récursion (factorielle, fibonacci, récursion mutuelle)
 - cas invalides syntaxiques : tokens invalides, opérateurs incomplets, point-virgule manquant
-- cas invalides sémantiques : variable non déclarée, variable redéclarée
+- cas invalides sémantiques : variable non déclarée, variable redéclarée, appel fonction inconnue, arité incorrecte, incohérences `return`
 - cas de robustesse : division/modulo par zéro (constante et via variable)
 
 Exemples de fichiers :
 
 - valides : `1_return42.c`, `14_combine_op.c`, `32_operator_priority.c`, `45_combine_all_ops.c`, `55_char.c`
-- invalides : `2_invalid_program.c`, `4_invalid_program_variable_not_declared.c`, `6_invalid_program_variable_declared_twice.c`, `36_missing_semicolon_fail.c`, `37_division_0.c`
+- valides fonctions : `functions/valid/04_fibonacci_recursive.c`, `functions/valid/05_factorial_recursive.c`
+- invalides fonctions : `functions/invalid/01_undefined_function.c`, `functions/invalid/03_wrong_arity_too_many.c`
 
 ### 7.3 Exécuter les tests
 
@@ -227,6 +263,10 @@ Deux méthodes principales sont disponibles :
 - 4.5 Table des symboles + vérifications statiques : fait
 - 4.6 Compilateur bout en bout pour langage restreint : fait
 - 4.7 Expressions arithmétiques : fait pour le cœur attendu (+ extensions déjà codées)
+- 4.8 Structures de contrôle (`if`, `while`) : fait
+- 4.9 Appels de fonctions et paramètres : fait
+- 4.10 Fonctions `int/void` + cohérence des `return` : fait
+- 4.11 Récursion : fait (validée par tests dédiés)
 
 ## 9. Répartition des tâches
 
@@ -256,3 +296,13 @@ Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pa
 ### 10.4 testfiles-while-invalid-05_while_double_semicolon
 
 Nous n'avons pas pris en compte la possibilité d'avoir une instruction vide. Donc le fait d'avoir deux ";" qui se suivent n'est pas une erreur pour gcc mais ça en est une pour notre compilateur.
+
+### 10.5 testfiles-functions-invalid-05_int_function_empty_return
+
+Cas volontairement invalide selon nos règles sémantiques strictes : `return;` est rejeté dans une fonction `int`.
+GCC peut accepter ce code en extension/legacy, ce qui peut créer un désalignement des verdicts dans le script de comparaison.
+
+### 10.6 testfiles-functions-invalid-06_void_function_returns_value
+
+Cas volontairement invalide selon nos règles sémantiques strictes : `return expr;` est rejeté dans une fonction `void`.
+GCC peut accepter ce code en extension/legacy, ce qui peut créer un désalignement des verdicts dans le script de comparaison.
