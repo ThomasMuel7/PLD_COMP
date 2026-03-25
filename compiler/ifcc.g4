@@ -10,7 +10,7 @@ type : 'int' | 'void';
 
 param_list : param (',' param)*;
 
-param : 'int' ('*')* VAR;
+param : 'int' VAR;
 
 block : '{'stmt*'}' ;
 
@@ -19,6 +19,7 @@ stmt : declare_stmt
      | break_stmt
      | continue_stmt
      | switch_stmt
+     | ';'
      | expr ';'
      | block
      | if_stmt
@@ -27,7 +28,7 @@ stmt : declare_stmt
 
 declare_stmt : 'int' declarator (',' declarator)* ';' ;
 
-declarator : ('*')* VAR ('[' INT ']')? ;
+declarator : VAR ('=' expr)? ;
 
 return_stmt : 'return' expr? ';' ;
 
@@ -48,13 +49,9 @@ case_label : 'case' (INT | CHAR) ':' ;
 default_label : 'default' ':' ;
 
 expr : '(' expr ')'                                               #ParensExpr
-     | '&' VAR                                                    #AddrExpr
-     | '*' expr OP=('=' | '+=' | '-=' | '*=' | '/=') expr         #DerefAssignExpr
-     | VAR '[' expr ']' OP=('=' | '+=' | '-=' | '*=' | '/=') expr #ArrayAssignExpr
      | OP=('++' | '--') VAR                                       #PreIncDecVarExpr
      | VAR OP=('++' | '--')                                       #PostIncDecVarExpr
-     | OP=('!' | '-' | '*')expr                                   #UnitaryExpr
-     | VAR '[' expr ']'                                           #ArrayAccessExpr
+     | OP=('!' | '-')expr                                         #UnitaryExpr
      | expr OP=('*' | '/' | '%') expr                             #MultDivModExpr
      | expr OP=('+' | '-') expr                                   #AddSubExpr
      | expr OP=('>' | '<' | '>=' | '<=') expr                     #CompareExpr

@@ -19,38 +19,32 @@ private:
     int currentOffset;
     int tempCounter = 0;
     int uniqueVarId = 0;
-    std::map<std::string, bool> tempIsPointer;
     std::vector<BasicBlock *> breakTargets;
     std::vector<BasicBlock *> continueTargets;
 
     std::string resolveVariable(const std::string& originalName);
     std::string gen_unique_id(antlr4::ParserRuleContext *ctx);
-    bool isPointerValue(const std::string &name) const;
 
 public:
     IRVisitor(SymbolTable &t, const FunctionTable &ft, int startoffset = 0);
 
     std::vector<CFG *> getCFGs() const { return cfgs; }
     int getCurrentOffset() const { return currentOffset; }
-    std::string createTemp(bool isPointer = false);
+    std::string createTemp();
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
     virtual antlrcpp::Any visitFunction_decl(ifccParser::Function_declContext *ctx) override;
     virtual antlrcpp::Any visitBlock(ifccParser::BlockContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;
     virtual antlrcpp::Any visitAssignExpr(ifccParser::AssignExprContext *ctx) override;
-    virtual antlrcpp::Any visitArrayAssignExpr(ifccParser::ArrayAssignExprContext *ctx) override;
-    virtual antlrcpp::Any visitDerefAssignExpr(ifccParser::DerefAssignExprContext *ctx) override;
     virtual antlrcpp::Any visitReturn_stmt(ifccParser::Return_stmtContext *ctx) override;
     virtual antlrcpp::Any visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) override;
     virtual antlrcpp::Any visitAddSubExpr(ifccParser::AddSubExprContext *ctx) override;
     virtual antlrcpp::Any visitParensExpr(ifccParser::ParensExprContext *ctx) override;
     virtual antlrcpp::Any visitConstExpr(ifccParser::ConstExprContext *ctx) override;
     virtual antlrcpp::Any visitVarExpr(ifccParser::VarExprContext *ctx) override;
-    virtual antlrcpp::Any visitAddrExpr(ifccParser::AddrExprContext *ctx) override;
     virtual antlrcpp::Any visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprContext *ctx) override;
     virtual antlrcpp::Any visitPostIncDecVarExpr(ifccParser::PostIncDecVarExprContext *ctx) override;
-    virtual antlrcpp::Any visitArrayAccessExpr(ifccParser::ArrayAccessExprContext *ctx) override;
     virtual antlrcpp::Any visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx) override;
     virtual antlrcpp::Any visitCompareExpr(ifccParser::CompareExprContext *ctx) override;
     virtual antlrcpp::Any visitEqualExpr(ifccParser::EqualExprContext *ctx) override;

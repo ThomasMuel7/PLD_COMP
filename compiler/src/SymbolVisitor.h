@@ -31,14 +31,10 @@ public:
     virtual antlrcpp::Any visitParensExpr(ifccParser::ParensExprContext *ctx) override;
     virtual antlrcpp::Any visitConstExpr(ifccParser::ConstExprContext *ctx) override;
     virtual antlrcpp::Any visitAssignExpr(ifccParser::AssignExprContext *ctx) override;
-    virtual antlrcpp::Any visitArrayAssignExpr(ifccParser::ArrayAssignExprContext *ctx) override;
-    virtual antlrcpp::Any visitDerefAssignExpr(ifccParser::DerefAssignExprContext *ctx) override;
     virtual antlrcpp::Any visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) override;
     virtual antlrcpp::Any visitVarExpr(ifccParser::VarExprContext *ctx) override;
-    virtual antlrcpp::Any visitAddrExpr(ifccParser::AddrExprContext *ctx) override;
     virtual antlrcpp::Any visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprContext *ctx) override;
     virtual antlrcpp::Any visitPostIncDecVarExpr(ifccParser::PostIncDecVarExprContext *ctx) override;
-    virtual antlrcpp::Any visitArrayAccessExpr(ifccParser::ArrayAccessExprContext *ctx) override;
     virtual antlrcpp::Any visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx) override;
     virtual antlrcpp::Any visitAddSubExpr(ifccParser::AddSubExprContext *ctx) override;
     virtual antlrcpp::Any visitCompareExpr(ifccParser::CompareExprContext *ctx) override;

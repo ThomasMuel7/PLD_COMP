@@ -1,869 +1,395 @@
 # MAINTENANCE
 
-Ce document est un guide de maintenance complet pour le compilateur IFCC de ce depot.
-Il est ecrit pour permettre a une nouvelle personne de:
-- comprendre rapidement l'architecture,
-- localiser chaque responsabilite,
-- modifier une fonctionnalite sans casser le reste,
-- diagnostiquer les erreurs de parsing, semantique, IR, ou backend.
+Ce document decrit la version simplifiee du compilateur IFCC.
+Objectif: maintenir un compilateur robuste sur un sous-ensemble C 
 
----
+## 1. Pipeline complet
 
-## 1) Vue d'ensemble du pipeline
-
-Le compilateur suit 4 grandes etapes:
+Le pipeline est strictement separe en 4 etages:
 
 1. Parsing (ANTLR)
-- Entree: source C simplifiee.
-- Sortie: arbre syntaxique (AST ANTLR).
-- Fichiers: `compiler/ifcc.g4`, `compiler/generated/*`.
+- fichier: `compiler/ifcc.g4`
+- sortie: AST ANTLR
 
 2. Analyse semantique
-- Entree: AST.
-- Sortie: tables de symboles/fonctions + validations de type/contexte.
-- Fichiers: `compiler/src/SymbolVisitor.h`, `compiler/src/SymbolVisitor.cpp`, `compiler/src/SymbolTable.h`, `compiler/src/ScopeTable.h`.
+- fichiers: `compiler/src/SymbolVisitor.h`, `compiler/src/SymbolVisitor.cpp`
+- sortie: `SymbolTable`, `FunctionTable`, erreurs/warnings semantiques
 
 3. Generation IR + CFG
-- Entree: AST + infos semantiques.
-- Sortie: CFG par fonction + suite d'instructions IR par basic block.
-- Fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`, `compiler/src/IR.h`, `compiler/src/IR.cpp`, `compiler/src/BasicBlock.h`, `compiler/src/BasicBlock.cpp`, `compiler/src/CFG.h`, `compiler/src/CFG.cpp`.
+- fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`
+- sortie: liste de CFG (un CFG par fonction)
 
-4. Backend (x86_64 / AArch64)
-- Entree: CFG + symbol table.
-- Sortie: assembleur cible.
-- Fichiers: `compiler/src/backend.h`, `compiler/src/backend.cpp`.
+4. Backend
+- fichiers: `compiler/src/backend.h`, `compiler/src/backend.cpp`
+- sortie: assembleur cible
 
-Point d'entree global:
-- `compiler/main.cpp`.
-
----
-
-## 2) Fichiers et roles (inventaire)
-
-### 2.1 Racine
-
-- `ifcc-test.py`
-  - Harness principal de test.
-  - Compare GCC et IFCC sur compilation, edition de liens, execution.
-  - Supporte mode multi-fichiers et mode single-file (`-S`, `-c`, `-o`).
-
-- `testing_wrapper.py`
-  - Wrapper local de lancement des tests.
-  - Detecte architecture, injecte `-target x86|arm` via un script temporaire.
-
-- `README.md`
-  - Documentation utilisateur/projet.
-
-- `testfiles/`
-  - Corpus de tests valides/invalides par categorie.
-
-### 2.2 Dossier compiler
-
+Point d'entree:
 - `compiler/main.cpp`
-  - Orchestration globale du compilateur.
 
-- `compiler/ifcc.g4`
-  - Grammaire ANTLR: lexer + parser.
+## 2. Front-end: grammaire simplifiee
 
-- `compiler/generated/*`
-  - Code ANTLR genere automatiquement (lexer/parser/visiteurs).
+Fichier: `compiler/ifcc.g4`
 
-- `compiler/src/*`
-  - Coeur du compilateur (semantique, IR, CFG, backend).
+### 2.1 Types et declarations
 
-- `compiler/Makefile`
-  - Build du compilateur, generation ANTLR, cible tests, clean.
+- types de fonctions: `int`, `void`
+- parametres: `int VAR`
+- declarateur local: `VAR` ou `VAR = expr`
+- declaration multiple autorisee: `int a, b = 1, c;`
 
-- `compiler/config.mk`
-  - Variables locales de chemin ANTLR (jar/include/lib).
+### 2.2 Expressions supportees
 
----
+- parentheses
+- pre/post inc-dec sur variable
+- unaires `!` et `-`
+- binaire `* / %`
+- binaire `+ -`
+- comparaisons `< <= > >=`
+- egalite `== !=`
+- bitwise `& ^ |`
+- logiques paresseux `&& ||`
+- affectation `= += -= *= /=` sur variable
+- constante `INT`, `CHAR`
+- variable
+- appel de fonction
 
-## 3) Point d'entree detaille: compiler/main.cpp
+### 2.3 Expressions retirees explicitement
 
-Fonction: `main(int argc, const char **argv)`
+La grammaire ne contient plus:
 
-Responsabilites:
-1. Parse les arguments CLI:
-- `-target x86|arm`.
-- fichier d'entree C.
+- adressage `&x`
+- dereferencement `*p`
+- acces tableau `a[i]`
+- ecriture indirecte `*p = ...`
+- ecriture tableau `a[i] = ...`
 
-2. Lit le fichier source en memoire (`stringstream in`).
+C'est la barriere principale qui empeche les regressions pointeurs/tableaux.
 
-3. Lance ANTLR:
-- `ANTLRInputStream`, `ifccLexer`, `CommonTokenStream`, `ifccParser`.
-- Point de depart: `axiom`.
+## 3. Structures de donnees
 
-4. Coupe le pipeline si erreurs de syntaxe.
+### 3.1 VariableInfo
 
-5. Lance analyse semantique:
-- Instancie `SymbolVisitor`.
-- Visite `tree->prog()`.
-- Coupe si `visitor.hasError`.
+Fichier: `compiler/src/SymbolTable.h`
 
-6. Lance generation IR:
-- Instancie `IRVisitor(visitor.table, visitor.functionTable, visitor.currentOffset)`.
-- Visite `tree->prog()`.
+Champs utilises dans la version simplifiee:
 
-7. Choisit backend selon cible:
-- `x86Backend` ou `ArmBackend`.
+- `index`: offset pile
+- `isUsed`: marque si la variable a ete lue/ecrite
+- `declLine`: ligne de declaration pour warning unused
 
-8. Genere assembleur:
-- `backendInstance->translate()`.
+Champs historiques conserves pour compatibilite interne backend:
 
-Remarque maintenance:
-- Aucun `delete` explicite des allocations dynamiques (CFG/BB/IR/backend). Acceptable pour un outil CLI court, mais fuite memoire structurelle si integration long-running.
+- `isPointer`, `isArray`, `arrayLength`, `byteSize`
 
----
+Dans ce mode simplifie, ces champs sont renseignes de maniere neutre (`false`, `0`, `4`).
 
-## 4) Grammaire: compiler/ifcc.g4
+### 3.2 FunctionInfo
 
-### 4.1 Regles structurelles
+- `returnType`: `Int` ou `Void`
+- `arity`: nombre de parametres
+- `paramUniqueNames`: noms internes suffixes
+- `paramIsPointer`: conserve pour compatibilite backend, rempli en `false`
 
-- `axiom : prog EOF;`
-- `prog : function_decl+;`
-- `function_decl : type VAR '(' param_list? ')' block;`
-- `type : 'int' | 'void';`
-- `param : 'int' ('*')* VAR;`
+### 3.3 ScopeTable
 
-### 4.2 Instructions (`stmt`)
+`ScopeTable = vector<map<string,string>>`
 
-`stmt` supporte:
-- declaration `declare_stmt`
-- `return_stmt`
-- `break_stmt`
-- `continue_stmt`
-- `switch_stmt`
-- expression `expr ';'`
-- bloc imbrique
-- `if_stmt`
-- `while_stmt`
+- chaque map: nom source -> nom interne unique
+- push/pop a l'entree/sortie de bloc
+- resolution en partant du scope le plus interne
 
-### 4.3 Declarations
+## 4. SymbolVisitor en detail
 
-- `declare_stmt : 'int' declarator (',' declarator)* ';';`
-- `declarator : ('*')* VAR ('[' INT ']')?;`
+Fichier: `compiler/src/SymbolVisitor.cpp`
 
-Permet:
-- int scalaire,
-- pointeur (`int *p`),
-- tableau 1D (`int a[10]`),
-- multi-level pointer syntaxiquement (`int **pp`) via repetition de `*`.
+Le `SymbolVisitor` fait toute la coherence semantique du langage.
 
-Important:
-- La semantique interne du projet est surtout binaire int/pointeur (pas de modelisation fine multi-niveaux).
+### 4.1 Etat global du visiteur
 
-### 4.4 Switch/case/default
+- `table`: table des variables
+- `functionTable`: signatures des fonctions
+- `scopeTable`: pile de scopes
+- `currentOffset`: offset pile courant
+- `uniqueVarId`: suffixe pour nommage unique
+- `hasError`: drapeau d'erreur semantique
+- `currentFunctionName`: fonction en cours
+- `currentFunctionReturnType`: type de retour attendu
+- `loopDepth`, `switchDepth`: controle contextuel de `break`/`continue`
 
-- `switch_stmt : 'switch' '(' expr ')' '{' switch_part* '}';`
-- `switch_part : case_label | default_label | stmt;`
-- `case_label : 'case' (INT | CHAR) ':';`
-- `default_label : 'default' ':';`
+### 4.2 Helper critiques
 
-Le design `switch_part` alterne labels et statements dans un flux unique, utile pour reproduire le fallthrough.
+- `resolveVariable(name)`
+  - role: trouver la variable visible la plus proche
+  - comportement: scan du scope interne vers externe
+  - retour: nom unique interne ou chaine vide
 
-### 4.5 Expressions (priorites)
+- `lookupVariableInfo(name)`
+  - role: acces direct a `VariableInfo` depuis le nom source
+  - utilise pour validations fines
 
-Ordre (haut vers bas dans la regle `expr`):
-- parentheses,
-- address-of `&VAR`,
-- deref assign `*expr OP expr`,
-- array assign `VAR[expr] OP expr`,
-- pre inc/dec `++VAR` / `--VAR`,
-- post inc/dec `VAR++` / `VAR--`,
-- unaires `!`, `-`, `*`,
-- acces tableau `VAR[expr]`,
-- `* / %`,
-- `+ -`,
-- comparaisons relationnelles,
-- egalite/inegalite,
-- bitwise `& ^ |`,
-- logique `&& ||`,
-- assignation `VAR OP expr`,
-- constantes,
-- variable,
-- appel de fonction.
+- `anyToExprType(Any)`
+  - role: convertir le retour des visiteurs d'expression en type interne
+  - types internes: `TYPE_INT`, `TYPE_INVALID`
 
-Attention maintenance:
-- L'ordre des alternatives ANTLR impacte la resolution de formes ambigu es (notamment autour de `*` deref vs multiplication).
-
-### 4.6 Lexer
-
-- `VAR`, `INT`, `CHAR`.
-- commentaires `/* ... */` et `//...` ignores.
-- directives preprocesseur ignorees.
-
----
-
-## 5) Modele de donnees semantique
-
-### 5.1 SymbolTable.h
-
-#### struct `VariableInfo`
-- `int index`: offset pile relatif a rbp (x86) / conversion sp (arm).
-- `bool isUsed`: marque usage (potentiellement pour warning, non exploite pleinement).
-- `bool isPointer`: variable pointeur logique.
-- `bool isArray`: variable tableau 1D.
-- `int arrayLength`: taille logique du tableau.
-- `int byteSize`: taille reservee en pile (4, 8, ou 4*N).
-
-#### enum `ReturnType`
-- `Int`
-- `Void`
-
-#### struct `FunctionInfo`
-- `ReturnType returnType`
-- `int arity`
-- `vector<string> paramUniqueNames`
-- `vector<bool> paramIsPointer`
-
-#### alias
-- `using SymbolTable = map<string, VariableInfo>`
-- `using FunctionTable = map<string, FunctionInfo>`
-
-### 5.2 ScopeTable.h
-
-`ScopeTable` = `vector<map<string,string>>`
-- chaque map relie nom source -> nom unique interne.
-- gere masquage (shadowing) par pile de scopes.
-
----
-
-## 6) Analyse semantique: SymbolVisitor
-
-Fichiers:
-- `compiler/src/SymbolVisitor.h`
-- `compiler/src/SymbolVisitor.cpp`
-
-### 6.1 Variables membres (etat global de visite)
-
-- `SymbolTable table`: table des variables uniques.
-- `FunctionTable functionTable`: signatures des fonctions.
-- `ScopeTable scopeTable`: pile de scopes actifs.
-- `int currentOffset`: offset pile courant (decroit).
-- `int uniqueVarId`: suffixe pour noms uniques.
-- `bool hasError`: drapeau global d'erreur semantique.
-- `string currentFunctionName`: fonction analysee.
-- `ReturnType currentFunctionReturnType`: type de retour de la fonction courante.
-- `int loopDepth`: profondeur d'imbrication des boucles.
-- `int switchDepth`: profondeur d'imbrication des switch.
-
-### 6.2 Helpers internes
-
-- `resolveVariable(originalName)`:
-  - cherche depuis le scope le plus interne vers l'externe.
-  - retourne nom unique ou chaine vide.
-
-- `lookupVariableInfo(originalName)`:
-  - combine resolution de nom + acces a `table`.
-
-- Helpers locaux cpp:
-  - `TYPE_INT`, `TYPE_PTR`, `TYPE_INVALID`.
-  - `anyToExprType(Any)` pour extraire robustement un type expression.
-  - `parseReturnType(string)`.
-
-### 6.3 Visiteurs (fonctions) et responsabilites
+### 4.3 Fonction par fonction
 
 - `visitProg`
-  - pre-declare toutes les fonctions (signature + arite + pointeur params).
-  - detecte duplication de nom de fonction.
-  - exige presence de `main`.
-  - puis visite chaque fonction.
+  - predeclare toutes les fonctions (nom, type retour, arite)
+  - detecte doublons de fonctions
+  - impose presence de `main`
+  - visite ensuite chaque fonction
+  - lance `checkUnusedVariables` en fin de passe
+
+- `checkUnusedVariables`
+  - parcourt la table des symboles
+  - emet un warning par variable jamais utilisee
+  - inclut la ligne de declaration quand disponible
 
 - `visitFunction_decl`
-  - initialise contexte fonction courant.
-  - ouvre scope parametres.
-  - alloue offsets et entrees table pour les params.
-  - renseigne `paramUniqueNames` et `paramIsPointer` dans `functionTable`.
-  - visite le bloc de fonction.
+  - initialise contexte de fonction
+  - ouvre le scope des parametres
+  - ajoute chaque parametre en variable locale interne
+  - reserve 4 octets par parametre
+  - enregistre les noms uniques des parametres
+  - visite le bloc de la fonction
 
 - `visitBlock`
-  - push/pop de scope lexical.
+  - push/pop de scope
+  - visite sequentielle des statements
 
 - `visitDeclare_stmt`
-  - traite chaque declarateur.
-  - detecte taille tableau invalide (`<=0`).
-  - interdit combinaison pointeur+tableau dans ce projet.
-  - detecte redeclaration dans meme scope.
-  - calcule `byteSize` et met a jour `currentOffset`.
+  - verifie redeclaration locale
+  - cree nom unique
+  - reserve 4 octets en pile
+  - si initialiseur present: verifie type expression et marque variable comme utilisee
 
 - `visitReturn_stmt`
-  - contraintes `void` vs `int`.
-  - interdit `return expr` dans `void`.
-  - interdit `return;` dans `int`.
-  - interdit retour pointeur dans fonction int.
+  - en fonction `void`: interdit `return expr;`
+  - en fonction `int`: interdit `return;`
+  - verifie que `return expr` est de type entier
 
 - `visitVarExpr`
-  - verifie declaration.
-  - marque usage.
-  - type retourne: ptr si variable pointeur/tableau, sinon int.
+  - verifie declaration
+  - marque la variable utilisee
+  - retourne type `TYPE_INT`
 
 - `visitAssignExpr`
-  - verifie declaration lhs.
-  - interdit assignation directe d'un tableau.
-  - pour `OP!=` (+= etc), interdit operations composees sur pointeur.
-  - force compatibilite type lhs/rhs selon pointeur/int.
-
-- `visitArrayAssignExpr`
-  - lhs doit etre tableau ou pointeur.
-  - index doit etre int.
-  - rhs doit etre int.
-
-- `visitDerefAssignExpr`
-  - lhs de `*lhs = rhs` doit etre pointeur.
-  - rhs doit etre int.
+  - verifie declaration lhs
+  - visite rhs
+  - verifie compatibilite (int-only)
+  - retourne `TYPE_INT` (comme en C)
 
 - `visitMultDivModExpr`
-  - interdit operandes pointeur.
-  - warning division/modulo par zero si detecte statiquement sur constante.
+  - verifie types entiers des 2 operandes
+  - warning si division/modulo par zero constant
+  - retourne `TYPE_INT`
 
-- `visitAddrExpr`
-  - `&var`: var doit etre declaree.
-  - retourne type pointeur.
+- `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBit*`, `visitLogic*`, `visitUnitaryExpr`
+  - meme schema: visite operandes, controle type int-only, retourne `TYPE_INT`
 
-- `visitPreIncDecVarExpr` / `visitPostIncDecVarExpr`
-  - variable doit exister.
-  - interdit ++/-- sur pointeur et tableau.
-  - retourne int.
-
-- `visitArrayAccessExpr`
-  - base doit etre tableau ou pointeur.
-  - index int.
-  - resultat int.
-
-- `visitUnitaryExpr`
-  - `*expr` requiert pointeur.
-  - `-` et `!` requierent int.
-
-- `visitConstExpr` / `visitParensExpr`
-  - garantissent que constantes et parenthesages remontent un type `int` explicite.
-
-- `visitCompareExpr` / `visitLogicBitANDExpr` / `visitLogicBitXORExpr` / `visitLogicBitORExpr` / `visitLogicANDExpr` / `visitLogicORExpr`
-  - valident les operandes et remontent un type `int` explicite.
-
-- Correctif semantique important
-  - le dereferencement unaire est strict: `*expr` exige un vrai pointeur.
-  - des cas invalides comme `*5` (donc `5 ** 5`) sont maintenant rejetes.
-
-- `visitAddSubExpr`
-  - int +/- int => int.
-  - ptr +/- int ou int + ptr => ptr.
-  - ptr +/- ptr => erreur (non supporte).
-
-- `visitEqualExpr`
-  - verifie compatibilite de types (hors invalid).
-  - retourne int booleen.
+- `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+  - exige variable declaree
+  - marque variable utilisee
+  - retourne `TYPE_INT`
 
 - `visitCallExpr`
-  - limite a 6 arguments.
-  - regles speciales `putchar` (1 arg) et `getchar` (0 arg).
-  - fonction utilisateur doit etre definie et bonne arite.
-  - interdit usage d'une fonction void comme expression.
-  - verifie type de chaque argument vs `paramIsPointer`.
+  - cas builtins:
+    - `putchar`: arite 1
+    - `getchar`: arite 0
+  - cas fonctions utilisateur:
+    - fonction definie
+    - arite correcte
+    - fonction `void` non utilisable comme expression
+  - visite tous les arguments et force type entier
 
-- `visitBreak_stmt`
-  - autorise seulement dans boucle ou switch.
-
-- `visitContinue_stmt`
-  - autorise seulement dans boucle.
+- `visitBreak_stmt`, `visitContinue_stmt`
+  - `break`: autorise seulement en boucle/switch
+  - `continue`: autorise seulement en boucle
 
 - `visitWhile_stmt`
-  - condition doit etre int.
-  - gere `loopDepth` pour validite de break/continue.
+  - condition de type entier
+  - gestion de `loopDepth`
 
 - `visitSwitch_stmt`
-  - expression switch doit etre int.
-  - detecte case duplique.
-  - detecte multiples default.
-  - gere `switchDepth`.
+  - expression switch de type entier
+  - detection `case` dupliques
+  - detection multi `default`
+  - gestion de `switchDepth`
 
----
+## 5. IRVisitor en detail
 
-## 7) IR, CFG, Basic Blocks
+Fichier: `compiler/src/IRVisitor.cpp`
 
-### 7.1 IR.h / IR.cpp
+Le `IRVisitor` transforme l'AST valide en IR lineaire, groupe par basic blocks dans un CFG.
 
-Classe `IRInstr`:
-- membre `BasicBlock *bb`
-- membre `Operation op`
-- membre `vector<string> params`
+### 5.1 Etat global du visiteur
 
-Enum `Operation`:
-- `ldconst`, `copy`
-- arithmetique: `add`, `sub`, `mul`, `div`, `mod`
-- memoire/pointeur: `addr`, `rmem`, `wmem`
-- appel: `call`
-- comparaisons: `cmp_eq`, `cmp_lt`, `cmp_le`, `cmp_gt`, `cmp_ge`, `cmp_ne`
-- logique bitwise: `and_`, `or_`, `xor_`
-- unaires: `neg`, `not_`
-- retour: `ret`
+- `cfgs`: tous les CFG produits
+- `cfg`: CFG courant
+- `current_bb`: bloc courant
+- `bb_epilogue`: bloc de sortie fonction
+- `table`: symboles (pour offsets des temporaires)
+- `functionTable`: signatures connues
+- `scopeTable`: resolution des noms pendant generation
+- `currentOffset`: allocation pile des temporaires
+- `tempCounter`: generation de `tmp0`, `tmp1`, ...
+- `uniqueVarId`: suffixe de noms internes
+- `breakTargets`, `continueTargets`: piles de cibles de controle
 
-Convention `params`:
-- 3-operandes: `dest, lhs, rhs`
-- `ldconst`: `dest, immediate`
-- `ret`: `var`
-- `call`: `funcName, dest, arg1, arg2, ...`
+### 5.2 Helpers critiques
 
-### 7.2 BasicBlock.h / BasicBlock.cpp
+- `resolveVariable(name)`
+  - meme strategie que le `SymbolVisitor`
 
-Classe `BasicBlock`:
-- `BasicBlock *exit_true`
-- `BasicBlock *exit_false`
-- `string label`
-- `CFG *cfg`
-- `vector<IRInstr*> instrs`
-- `string test_var_name`
+- `createTemp()`
+  - alloue un temporaire entier (4 octets)
+  - enregistre l'offset en table symbole
 
-Methodes:
-- constructeur: ajoute automatiquement le block a `cfg->blocks`.
-- `add_IRInstr(op, params)`.
-- `add_exit(exit_true, exit_false)`.
+- `gen_unique_id(ctx)`
+  - derive un suffixe unique ligne/colonne
+  - evite collisions de labels de basic blocks
 
-Semantique des sorties:
-- deux sorties: branchement conditionnel sur `test_var_name`.
-- une sortie: jump inconditionnel.
-- zero sortie: chute vers epilogue (selon generation backend).
+### 5.3 Fonction par fonction
 
-### 7.3 CFG.h / CFG.cpp
-
-Classe `CFG`:
-- `BasicBlock *entry`
-- `vector<BasicBlock*> blocks`
-- `string functionName`
-- `bool isVoidReturn`
-- `vector<string> paramVarNames`
-- `vector<bool> paramIsPointer`
-
-Methodes:
-- constructeur `CFG(functionName, isVoidReturn)`.
-- `set_entry`.
-
----
-
-## 8) Generation IR: IRVisitor
-
-Fichiers:
-- `compiler/src/IRVisitor.h`
-- `compiler/src/IRVisitor.cpp`
-
-### 8.1 Variables membres
-
-- `vector<CFG*> cfgs`: toutes les fonctions.
-- `CFG *cfg`: CFG courant.
-- `BasicBlock *current_bb`: block d'insertion courant.
-- `BasicBlock *bb_epilogue`: block epilogue de la fonction courante.
-- `SymbolTable &table`: table des symboles (reference, partagee).
-- `const FunctionTable &functionTable`: signatures fonctions.
-- `ScopeTable scopeTable`: renommage local IR.
-- `int currentOffset`: offset pile courant pour temporaires.
-- `int tempCounter`: compteur `tmpN`.
-- `int uniqueVarId`: compteur noms uniques pour variables utilisateur.
-- `map<string,bool> tempIsPointer`: type pointeur des temporaires.
-- `vector<BasicBlock*> breakTargets`: pile de cibles break.
-- `vector<BasicBlock*> continueTargets`: pile de cibles continue.
-
-### 8.2 Helpers
-
-- `resolveVariable`: resolution lexicale, fallback sur nom brut.
-- `gen_unique_id(ctx)`: suffixe stable base sur ligne/colonne pour labels.
-- `isPointerValue(name)`: regarde `tempIsPointer` puis `table`.
-- `createTemp(isPointer=false)`:
-  - cree `tmpN`.
-  - reserve 4 ou 8 octets.
-  - met a jour `table` et `tempIsPointer`.
-
-### 8.3 Visiteurs expression/affectation
-
-- `visitAssignExpr`
-  - `=` -> `copy`
-  - `+= -= *= /=` -> operation sur lhs en place.
-
-- `visitArrayAssignExpr`
-  - calcule adresse element: base + index*4.
-  - base tableau: convertie en pointeur via `addr`.
-  - `=` -> `wmem`
-  - compose -> `rmem`, operation, `wmem`.
-
-- `visitDerefAssignExpr`
-  - `*ptr = v` -> `wmem`.
-  - compose -> read-modify-write via `rmem/wmem`.
-
-- `visitAddSubExpr`
-  - int/int: add/sub simple.
-  - ptr/int: scale rhs par 4 puis add/sub sur pointeur.
-  - int+ptr: symetrique sur add.
-  - ptr/ptr: passe par sub brut (la semantique rejette en amont normalement).
-
-- `visitMultDivModExpr`
-  - mapping vers `mul/div/mod`.
-
-- `visitConstExpr`
-  - alloue temp + `ldconst`.
-  - CHAR converti via code ascii du caractere.
-
-- `visitVarExpr`
-  - variable scalaire: retourne nom unique.
-  - tableau: retourne pointeur base (`addr` vers temp pointeur).
-
-- `visitAddrExpr`
-  - `&var` -> `addr` dans temp pointeur.
-
-- `visitPreIncDecVarExpr`
-  - modifie variable puis retourne la variable.
-
-- `visitPostIncDecVarExpr`
-  - copie ancienne valeur, modifie variable, retourne ancienne valeur.
-
-- `visitArrayAccessExpr`
-  - calcule adresse element puis `rmem`.
-
-- `visitUnitaryExpr`
-  - `*expr` -> `rmem`.
-  - `-expr` -> `neg`.
-  - `!expr` -> `not_`.
-
-- `visitCompareExpr` / `visitEqualExpr`
-  - genere cmp_* adequat, retourne temp booleen int.
-
-- `visitLogicBitANDExpr` / `visitLogicBitORExpr` / `visitLogicBitXORExpr`
-  - mapping direct vers `and_` / `or_` / `xor_`.
-
-- `visitLogicANDExpr` / `visitLogicORExpr`
-  - short-circuit avec creation de blocks.
-  - normalise booleens via comparaison `!= 0`.
-
-- `visitCallExpr`
-  - fabrique `params = [func, dest, args...]`.
-  - ajoute IR `call`.
-
-### 8.4 Visiteurs controle
+- `visitProg`
+  - visite chaque fonction
 
 - `visitFunction_decl`
-  - cree `prologue`, `body`, `epilogue`.
-  - enregistre params dans cfg (`paramVarNames`, `paramIsPointer`).
-  - visite bloc.
-  - ajoute retour implicite `0` si aucun exit deja fixe.
+  - cree CFG
+  - cree bloc `prologue`, `body`, `epilogue`
+  - mappe les parametres sur noms uniques
+  - visite le bloc fonction
+  - injecte un `return 0` implicite si aucun return explicite ne termine le flux
 
 - `visitBlock`
-  - push/pop scope.
-  - stop sur statement qui clot deja le flow (`exit_true != nullptr`).
+  - push/pop scope
+  - visite statements
+  - stoppe la visite locale si le bloc courant est deja termine (sortie branchee)
+
+- `visitDeclare_stmt`
+  - enregistre noms uniques de variables locales
+  - genere `copy` si initialiseur present
+
+- `visitAssignExpr`
+  - `=` -> IR `copy`
+  - `+= -= *= /=` -> operation en place
+  - retourne la variable lhs (semantique expression)
+
+- `visitConstExpr`
+  - cree un temporaire
+  - genere `ldconst`
+
+- `visitVarExpr`
+  - retourne la variable resolue
+
+- `visitPreIncDecVarExpr` / `visitPostIncDecVarExpr`
+  - genere `ldconst 1`
+  - puis `add`/`sub`
+  - version post retourne l'ancienne valeur via temporaire copie
+
+- `visitUnitaryExpr`
+  - `-` -> IR `neg`
+  - `!` -> IR `not_`
+
+- `visitMultDivModExpr`, `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBit*`
+  - visite lhs/rhs
+  - cree un temporaire destination
+  - emet l'operation IR correspondante
+
+- `visitLogicANDExpr` (court-circuit)
+  - evalue lhs
+  - branche vers bloc false (resultat 0) ou bloc rhs
+  - evalue rhs seulement si lhs vrai
+  - fusion en bloc end
+
+- `visitLogicORExpr` (court-circuit)
+  - evalue lhs
+  - branche vers bloc true (resultat 1) ou bloc rhs
+  - evalue rhs seulement si lhs faux
+  - fusion en bloc end
+
+- `visitCallExpr`
+  - construit la liste parametres IR (`func`, `dest`, `args...`)
+  - emet instruction `call`
+  - retourne `dest`
 
 - `visitReturn_stmt`
-  - sans expr -> temp=0.
-  - ajoute `ret` puis branche vers epilogue.
+  - si `return expr`: calcule `expr` et emet `ret expr`
+  - si `return;`: emet `ret 0`
+  - branche vers `bb_epilogue`
 
 - `visitIf_stmt`
-  - cree blocks cond/then/(else)/end.
-  - condition via `test_var_name`.
+  - cree `bb_cond`, `bb_then`, optionnel `bb_else`, `bb_end`
+  - condition stockee dans `test_var_name`
+  - connecte les sorties conditionnelles
 
 - `visitWhile_stmt`
-  - cree cond/body/end.
-  - push/pop `breakTargets` et `continueTargets`.
+  - cree `bb_cond`, `bb_body`, `bb_end`
+  - pousse cibles `break/continue`
+  - boucle sur `bb_cond`
 
-- `visitBreak_stmt`
-  - jump vers `breakTargets.back()` si present.
-
-- `visitContinue_stmt`
-  - jump vers `continueTargets.back()` si present.
+- `visitBreak_stmt` / `visitContinue_stmt`
+  - branche vers cible top de pile
 
 - `visitSwitch_stmt`
-  - evalue expression switch.
-  - cree block end + blocks de case/default.
-  - cree chaine de dispatch `cmp_eq` case par case.
-  - gere fallthrough explicite par chaining des blocks labels.
-  - push/pop cible break vers fin du switch.
+  - construit chaine de dispatch comparant valeur switch a chaque case
+  - supporte default
+  - gere fallthrough
+  - gere `break` via `breakTargets`
 
----
+## 6. Backend: implications de la simplification
 
-## 9) Backend: emission assembleur
+Le backend conserve du code historique multi-cas, mais en pratique:
 
-Fichiers:
-- `compiler/src/backend.h`
-- `compiler/src/backend.cpp`
+- toutes les valeurs generees par front-end simplifie sont des entiers
+- `paramIsPointer` reste a `false`
+- les operations memoire indirecte (`addr`, `rmem`, `wmem`) ne sont plus emises
 
-### 9.1 Classe abstraite `backend`
+Ceci permet de garder un backend stable sans complexifier le front-end.
 
-Membres:
-- `vector<CFG*> cfgs`
-- `SymbolTable symbolTable` (copie)
+## 7. Politique de tests
 
-Methodes:
-- `translate()` pure virtuelle.
-- `generate(IRInstr*)` pure virtuelle.
+Les tests conserves sont alignes sur le perimetre supporte.
 
-### 9.2 x86Backend
+Retire:
 
-Methodes principales:
-- `computeFrameSize()`:
-  - cherche offset minimum dans symbol table.
-  - aligne stack frame sur 16.
+- `testfiles/pointers/`
+- `testfiles/arrays/`
+- tests relies explicitement a ces features dans d'autres categories
 
-- `getOffset(varName)`:
-  - retourne `index(%rbp)`.
+Conserve:
 
-- `loadBinaryOperands(instr)`:
-  - charge op1 en `%eax`, op2 en `%ebx` (32 bits).
+- operations int
+- controle de flux
+- fonctions
+- I/O std (`putchar/getchar`)
+- declarations/initialisations
+- warnings `unused`
 
-- `saveResultEax(instr)`:
-  - stocke `%eax` vers destination.
+## 8. Commandes de maintenance
 
-- `translate()`:
-  - emet label global par fonction.
-  - prologue `pushq/movq/subq`.
-  - map params registres SysV (`edi, esi...` ou `rdi, rsi...` pour pointeurs).
-  - emet code de chaque IR du block.
-  - emet branches selon `exit_true/exit_false`.
-  - epilogue `leave; ret`.
+Build complet:
 
-- `generate(instr)`:
-  - map complet IR -> asm x86.
-  - 64 bits pour valeurs pointeur (`movq`, `cmpq`, etc).
-  - 32 bits pour int (`movl`, `cmpl`, etc).
-  - memoire indirecte:
-    - `rmem`: charge adresse pointeur, lit `(%rax)`.
-    - `wmem`: charge adresse pointeur, ecrit `(%rax)`.
+```bash
+cd compiler
+make clean
+make -j4
+```
 
-### 9.3 ArmBackend (AArch64)
+Execution d'un sous-ensemble de tests supportes:
 
-Methodes analogues:
-- `computeFrameSize()`.
-- `getOffset(varName)`: convertit offset relatif en offset positif depuis SP courant.
-- `loadBinaryOperands` et `saveResultEax` (w0/w1).
-- `translate()`:
-  - prologue `sub sp, sp, #frameSize`.
-  - params dans `w0..w7` ou `x0..x7` selon pointeur.
-  - branches `beq`/`b`.
-  - epilogue `add sp, sp, #frameSize; ret`.
+```bash
+python3 ifcc-test.py testfiles/add testfiles/assignment testfiles/bloc testfiles/break-continue testfiles/comparison testfiles/cond-loops testfiles/const testfiles/decl-init testfiles/div testfiles/equality testfiles/functions testfiles/getcharputchar testfiles/if testfiles/incdec testfiles/logic testfiles/minus testfiles/mod testfiles/mul testfiles/op-assignment testfiles/return testfiles/switch testfiles/unary testfiles/unused-var testfiles/while
+```
 
-- `generate(instr)`:
-  - map IR -> instructions AArch64.
-  - pointeurs en registres `x*`.
-  - int en `w*`.
-  - `addr`: `add x8, sp, #offset`.
-  - `rmem/wmem`: dereference via `x8`.
+## 9. Regle d'evolution
 
-### 9.4 ABI et limites
+Si une fonctionnalite est ajoutee:
 
-- Arguments supportes: 6 max cote semantique (meme si ARM peut plus en registres).
-- Return: backend stocke valeur retour en int (`eax` / `w0`) meme pour usages pointeurs non officiellement supportes comme return type.
+1. Etendre la grammaire de maniere minimale
+2. Etendre d'abord SymbolVisitor (regles semantiques)
+3. Etendre ensuite IRVisitor (generation)
+4. Ajouter tests `valid` + `invalid`
+5. Mettre a jour README + MAINTENANCE
 
----
-
-## 10) Build et regeneration
-
-### 10.1 Makefile
-
-Cibles importantes:
-- `make ifcc` ou `make all`.
-- Generation ANTLR auto si `ifcc.g4` modifie.
-- `make tests` appelle `python3 ../testing_wrapper.py`.
-- `make clean` supprime `build`, `generated`, `ifcc`.
-
-### 10.2 config.mk
-
-Doit definir:
-- `ANTLRJAR`
-- `ANTLRINC`
-- `ANTLRLIB`
-
-Sans ces chemins, compilation impossible.
-
----
-
-## 11) Tests et validation
-
-### 11.1 ifcc-test.py
-
-Logique cle:
-- rebuild `compiler/ifcc` si necessaire (`make --question`, puis `make`).
-- mode multiple:
-  - copie chaque test dans `ifcc-test-output/<job>/input.c`.
-  - compile GCC et IFCC,
-  - link et execute si valides,
-  - compare les sorties d'execution.
-
-Verdicts:
-- GCC invalide + IFCC invalide => OK.
-- GCC invalide + IFCC valide => FAIL.
-- GCC valide + IFCC invalide => FAIL.
-- les 2 valides mais execution differente => FAIL.
-
-### 11.2 testing_wrapper.py
-
-Ajoute une couche utilitaire:
-- detecte arch.
-- injecte `-target` de facon transparente via renommage `ifcc -> ifcc_real`.
-- restaure toujours l'executable apres test (bloc `finally`).
-
----
-
-## 12) Cartographie des fonctionnalites (de bout en bout)
-
-### 12.1 Pointeurs
-
-- Grammaire:
-  - declaration `int *p`
-  - `&var`, `*expr`, `*expr = rhs`
-
-- Semantique:
-  - types int/pointeur verifies.
-  - interdiction ++/-- sur pointeurs.
-  - affectation pointeur <- pointeur uniquement.
-
-- IR:
-  - `addr`, `rmem`, `wmem`.
-
-- Backend:
-  - moves/comparaisons 64 bits pour pointeurs.
-
-### 12.2 Tableaux 1D
-
-- Grammaire:
-  - `int a[N]`, `a[i]`, `a[i] = v`, `a[i] += v` etc.
-
-- Semantique:
-  - taille > 0,
-  - index int,
-  - ecriture element int,
-  - assignation directe tableau interdite.
-
-- IR:
-  - conversion base tableau vers pointeur (`addr`),
-  - address arithmetic `index * 4`.
-
-### 12.3 Break/Continue
-
-- Semantique:
-  - `break`: boucle ou switch.
-  - `continue`: boucle seulement.
-
-- IR:
-  - piles `breakTargets` / `continueTargets`.
-
-### 12.4 Switch/case/default
-
-- Semantique:
-  - expr switch int,
-  - case uniques,
-  - max un default.
-
-- IR:
-  - chaine de dispatch `cmp_eq`.
-  - blocks labels + fallthrough naturel.
-  - break cible fin switch.
-
-### 12.5 Pre/Post ++/--
-
-- Semantique:
-  - variable int uniquement.
-
-- IR:
-  - pre: update puis retourne nouvelle valeur.
-  - post: sauvegarde ancienne valeur, update, retourne ancienne valeur.
-
----
-
-## 13) Limitations connues
-
-1. Type system simplifie
-- Principalement `int` et `pointer-like`.
-- Pas de type-checking profond multi-niveaux de pointeurs.
-
-2. Return policy stricte
-- Le compilateur rejette certains cas que GCC peut accepter (ex: `return;` dans int, `return expr;` dans void).
-
-3. Fonctions
-- Limite semantique de 6 arguments.
-- Pas de support de declarations sans definition separee.
-
-4. Allocation memoire
-- Pas de gestion de destruction des objets dynamiques C++ internes du compilateur.
-
-5. Warnings
-- Pas de passe dediee de warning globale (hors warnings ponctuels comme division/modulo par zero constante).
-
----
-
-## 14) Guide de modification (playbook)
-
-### 14.1 Ajouter un nouvel operateur
-
-1. Modifier `ifcc.g4` (syntaxe et priorite).
-2. Regenerer parser (`make` suffit).
-3. Ajouter regle semantique dans `SymbolVisitor`.
-4. Ajouter lowering dans `IRVisitor`.
-5. Ajouter emission asm dans `x86Backend::generate` et `ArmBackend::generate`.
-6. Ajouter tests valides/invalides + stress dans `testfiles/`.
-
-### 14.2 Ajouter une nouvelle instruction de controle
-
-1. Grammaire (`stmt` + regle dediee).
-2. Validation contexte dans `SymbolVisitor` (profondeurs/piles).
-3. Construction CFG dans `IRVisitor` (basic blocks + exits).
-4. Tests de flux (fallthrough, imbrications, interactions avec return/break).
-
-### 14.3 Ajouter un nouveau type de donnees
-
-1. Etendre `VariableInfo` / type system semantique.
-2. Adapter toutes les regles de compatibilite dans `SymbolVisitor`.
-3. Propager metadata type vers temporaires (`createTemp`, `tempIsPointer` equivalent generalise).
-4. Adapter backend (taille, move, compare, ABI args/ret).
-
----
-
-## 15) Checklist de regression minimale
-
-Apres toute modification:
-
-1. `make -C compiler clean && make -C compiler ifcc`
-2. `python3 ifcc-test.py testfiles`
-3. Verifier categories critiques:
-- pointeurs/tableaux
-- switch/break/continue
-- incdec
-- appels fonctions
-- invalides semantiques
-
-4. Si un test valide GCC est rejete IFCC:
-- inspecter `ifcc-test-output/<job>/ifcc-compile.txt`.
-
-5. Si un test compile mais diverge a l'execution:
-- comparer `asm-gcc.s` vs `asm-ifcc.s`.
-- verifier CFG genere indirectement via structure des sauts labels.
-
----
-
-## 16) Aide au debug (symptome -> zone probable)
-
-- Erreur de syntaxe immediate:
-  - `ifcc.g4` ou priorites/alternatives ambigues.
-
-- Programme invalide accepte:
-  - regle manquante dans `SymbolVisitor`.
-
-- Programme valide rejete:
-  - regle trop stricte dans `SymbolVisitor` (ou difference de politique assumee).
-
-- Mauvais resultat runtime avec compilation ok:
-  - lowering `IRVisitor` incorrect,
-  - ou emission backend (taille registre, branchement, offset).
-
-- Segfault runtime:
-  - calcul d'adresse (`addr`, index*4, rmem/wmem),
-  - ou erreur de frame offset.
-
-- Sauts/fallthrough incorrects:
-  - `visitIf_stmt`, `visitWhile_stmt`, `visitSwitch_stmt`, ou branchement final des BB dans backend.
-
----
-
-## 17) Resume executif pour nouveau mainteneur
-
-- Le pipeline est proprement separe: grammaire -> semantique -> IR/CFG -> backend.
-- Les deux classes les plus sensibles sont:
-  - `SymbolVisitor` (coherence langage),
-  - `IRVisitor` (coherence comportementale).
-- Le backend est relativement mecanique, mais toute erreur de largeur (32/64 bits) casse vite pointeurs/appels.
-- Les tests comparent IFCC a GCC, ce qui donne un filet de securite solide.
-- Le projet est maintenable si toute nouvelle feature suit strictement le workflow:
-  - syntaxe, semantique, IR, backend, tests.
+Ordre inverse interdit (ne jamais ajouter IR sans garde semantique explicite).
