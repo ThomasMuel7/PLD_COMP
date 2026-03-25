@@ -306,3 +306,7 @@ GCC peut accepter ce code en extension/legacy, ce qui peut créer un désalignem
 
 Cas volontairement invalide selon nos règles sémantiques strictes : `return expr;` est rejeté dans une fonction `void`.
 GCC peut accepter ce code en extension/legacy, ce qui peut créer un désalignement des verdicts dans le script de comparaison.
+
+### 10.7 --testfiles-getcharputchar / valid 01 / 02 / 03 / 07
+
+Sous notre version de gcc (clang) sous mac putchar n'existe pas, gcc le considere comme un programme invalide alors que ce n'est pas le cas.
