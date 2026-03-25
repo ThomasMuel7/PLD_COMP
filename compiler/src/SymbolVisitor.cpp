@@ -8,6 +8,20 @@ using namespace std;
 SymbolVisitor::SymbolVisitor() {
     scopeTable.push_back(map<string, string>());
 }
+void SymbolVisitor::registerVariable(const string &originalName)
+{
+    if (scopeTable.back().find(originalName) != scopeTable.back().end())
+    {
+        cerr << "Erreur sémantique : la variable '" << originalName << "' est déjà déclarée dans ce bloc." << endl;
+        hasError = true;
+        return;
+    }
+
+    string uniqueName = originalName + "_" + to_string(uniqueVarId++);
+    scopeTable.back()[originalName] = uniqueName;
+    currentOffset -= 4;
+    table[uniqueName] = {currentOffset, false};
+}
 
 static ReturnType parseReturnType(const string &typeText) {
     return (typeText == "void") ? ReturnType::Void : ReturnType::Int;
@@ -95,17 +109,26 @@ antlrcpp::Any SymbolVisitor::visitBlock(ifccParser::BlockContext *ctx) {
 }
 
 antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
-    for (auto var : ctx->VAR()) {
-        string originalName = var->getText();
-        if (scopeTable.back().find(originalName) != scopeTable.back().end()) {
-            cerr << "Erreur: la variable '" << originalName << "' est déjà déclarée dans ce bloc." << endl;
-            hasError = true;
-        } else {
-            string uniqueName = originalName + "_" + to_string(uniqueVarId++);
-            scopeTable.back()[originalName] = uniqueName;
-            currentOffset -= 4;
-            table[uniqueName] = {currentOffset, false};
-        }
+    for (auto elmtCtx : ctx->declare_elmt())
+    {
+        visit(elmtCtx);
+    }
+    return 0;
+}
+
+antlrcpp::Any SymbolVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx)
+{
+    if (ctx->VAR())
+    {
+        string name = ctx->VAR()->getText();
+        registerVariable(name);
+    }
+    else if (ctx->assign_stmt())
+    {
+        string name = ctx->assign_stmt()->VAR()->getText();
+        registerVariable(name);
+
+        visit(ctx->assign_stmt());
     }
     return 0;
 }

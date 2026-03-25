@@ -14,9 +14,11 @@ param : 'int' VAR;
 
 block : '{'stmt*'}' ;
 
-stmt : declare_stmt | return_stmt | expr ';' | block | if_stmt | while_stmt ;
+stmt : declare_stmt ';' | return_stmt ';' | expr ';' | block | if_stmt | while_stmt ;
 
-declare_stmt : 'int' VAR (',' VAR)* ';' ;
+declare_stmt : 'int' declare_elmt (',' declare_elmt)* ;
+declare_elmt : VAR | assign_stmt ;
+assign_stmt : VAR '=' expr ;
 
 return_stmt : 'return' expr? ';' ;
 
