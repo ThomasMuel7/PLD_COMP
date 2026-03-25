@@ -233,6 +233,14 @@ Pour voir la répartition des tâches et l'avancement du projet, consultez le do
 [Répartition des tâches PLD-Comp](https://docs.google.com/spreadsheets/d/1ENracvxvhSuJ-HFS7LvaUH-EdFnAlYx0OItCOUCQky8/edit?gid=0#gid=0)
 
 ## 10. Pourquoi certains tests ne fonctionnent pas
+Dans le cas des tests de la fonction getchar() nous ne pouvons pas inclure dans les testfiles des tests qui attendent un char indefiniement. Nous les avons cependant testés en apparté et en entrant une valeur nous même, les tests rendent des resultats valides. 
+Exemple de test qui rentre dans ce cas la : 
+
+int main() {
+    int x;
+    x = getchar();
+    return x;
+}
 
 ### 10.1 Dossier de tests "testfiles/undefined"
 

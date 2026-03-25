@@ -58,6 +58,10 @@ public:
 private:
     BasicBlock *bb; /**< The BB this instruction belongs to, which provides a pointer to the CFG this instruction belong to */
     Operation op;
-    vector<string> params; /**< For 3-op instrs: d, x, y; for ldconst: d, c;  For call: label, d, params;  for wmem and rmem: choose yourself */
+    vector<string> params; /**< For 3-op instrs: d, x, y For ldconst: d, c For ret: x For call: 
+        params[0] = function label / function name
+        params[1] = destination variable for return value
+        params[2...] = argument variables
+    */
                            // if you subclass IRInstr, each IRInstr subclass has its parameters and the previous (very important) comment becomes useless: it would be a better design.
 };
