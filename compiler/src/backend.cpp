@@ -1,6 +1,7 @@
 #include "backend.h"
 #include <algorithm>
 #include <iostream>
+#include <set>
 
 using namespace std;
 
@@ -227,31 +228,61 @@ string x86Backend::generate(IRInstr *instr) {
 
 
 
-// ===================== AARCH64 BACKEND =====================
 
 
 ArmBackend::ArmBackend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
+void ArmBackend::buildLocalOffsets(CFG *cfg)
+{
+  currentCFG = cfg;
+  localOffsets.clear();
+  
+  std::set<std::string> usedVars;
+  for (BasicBlock *bb : cfg->blocks)
+  {
+    for (IRInstr *instr : bb->instrs)
+    {
+      for (const auto &param : instr->getParams())
+      {
+        if (symbolTable.find(param) != symbolTable.end())
+        {
+          usedVars.insert(param);
+        }
+      }
+    }
+  }
+  
+  for (const auto &paramName : cfg->paramVarNames)
+  {
+    usedVars.insert(paramName);
+  }
+
+  int offset = -4;
+  for (const auto &var : usedVars)
+  {
+    localOffsets[var] = offset;
+    offset -= 4;
+  }
+}
+
 int ArmBackend::computeFrameSize() const
 {
-  int minOffset = 0;
-  for (const auto &entry : symbolTable)
-  {
-    minOffset = std::min(minOffset, entry.second.index);
-  }
-  int size = -minOffset;
+  if (currentCFG == nullptr) return 0;
+  
+  int totalVars = localOffsets.size();
+  int size = totalVars * 4;
+  
   if (size % 16 != 0) size += 16 - (size % 16);
   return size;
 }
 
 string ArmBackend::getOffset(const string &varName)
 {
-  auto it = symbolTable.find(varName);
-  if (it != symbolTable.end())
+  if (localOffsets.find(varName) != localOffsets.end())
   {
     int frameSize = computeFrameSize();
-    int spOffset = frameSize + it->second.index;
+    int spOffset = frameSize + localOffsets[varName];
     return to_string(spOffset);
   }
   return "0";
@@ -271,9 +302,11 @@ string ArmBackend::saveResultEax(IRInstr *instr)
 
 void ArmBackend::translate()
 {
-  int frameSize = computeFrameSize();
   for (CFG *cfg : cfgs)
   {
+    buildLocalOffsets(cfg);
+    int frameSize = computeFrameSize();
+    
     string labelPrefix = cfg->functionName + "_";
     auto asmLabel = [&](BasicBlock *bb) {
       if (bb->label == "prologue") {
@@ -293,7 +326,11 @@ void ArmBackend::translate()
         cout << ".globl " << cfg->functionName << "\n";
         cout << cfg->functionName << ":\n";
 #endif
-        cout << "    sub sp, sp, #" << frameSize << "\n";
+        cout << "    stp fp, lr, [sp, #-16]!\n";
+        cout << "    mov fp, sp\n";
+        if (frameSize > 0) {
+          cout << "    sub sp, sp, #" << frameSize << "\n";
+        }
         static const vector<string> argRegsW = {
           "w0", "w1", "w2", "w3", "w4", "w5", "w6", "w7"
         };
@@ -304,7 +341,8 @@ void ArmBackend::translate()
       }
       else if (bb->label == "epilogue") {
         cout << asmLabel(bb) << ":\n";
-        cout << "    add sp, sp, #" << frameSize << "\n";
+        cout << "    mov sp, fp\n";
+        cout << "    ldp fp, lr, [sp], #16\n";
         cout << "    ret\n";
         continue;
       }

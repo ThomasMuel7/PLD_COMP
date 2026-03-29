@@ -283,16 +283,29 @@ Pour voir la répartition des tâches et l'avancement du projet, consulter le do
 Dans le cas des tests de la fonction getchar() nous ne pouvons pas inclure dans les testfiles des tests qui attendent un char indefiniement. Nous les avons cependant testés en apparté et en entrant une valeur nous même, les tests rendent des resultats valides. Exemple de test qui rentre dans ce cas la :
 int main() { int x; x = getchar(); return x; }
 
-
 De plus le comportement peut varier selon l'environnement (WSL, Linux natif, macOS/clang). Sous notre version de gcc (clang) sous mac putchar n'existe pas, gcc le considere comme un programme invalide alors que ce n'est pas le cas.
 
 ### 9.2 Dossier `testfiles/undefined`
 
 Ces programmes ont un comportement C non defini. Il est normal d'observer des divergences entre ifcc et gcc/clang selon plate-forme et version de compilateur.
 
-### 9.3 `testfiles-div-invalid-37_division_0` / `testfiles-div-invalid-37_division_0`
-Pour une raison qui nous est inconnue, ces tests marchent sous linux/wsl mais pas sous mac (C'est probablement du au fait que notre gcc sous mac n'est pas exactement le même que celui sous linux)
+### 9.3 Tests échoués sur macOS
 
-De manière plus général, selon l'outil systeme utilise (`gcc` vs `clang`, version libc, ABI), certains verdicts de tests peuvent differer tout en restant cohérents avec les limites du langage C non defini ou avec des extensions de compilateur.
+1. **Gestion des erreurs syntaxiques par le compilateur C**: `clang` vs `gcc` peuvent avoir des seuils de tolérance différents pour les erreurs de syntaxe
+2. **Détection de division par zéro**: Comportement indéfini en C, divergences acceptables
+3. **ABI et appels de fonctions**: Différences dans le respect strict des normes ARM64
 
+#### Tests de syntaxe invalide non rejetés
 
+Ces 10 tests testent des programmes avec des erreurs syntaxiques qui **devraient être rejetés** par ifcc lors de la compilation, mais qui ne le sont pas sur macOS:
+
+- `testfiles-add-invalid-12_add_fail`: `a = 5 +;` (opérateur binaire incomplet)
+- `testfiles-add-invalid-13_add_fail2`: `a = 5 ++ 5;` (deux incréments consécutifs invalides)
+- `testfiles-const-invalid-35_double_assign_fail`: `a = = 5;` (double affectation invalide)
+- `testfiles-const-invalid-36_missing_semicolon_fail`: `int a` (point-virgule manquant)
+- `testfiles-div-invalid-43_div_fail`: `a = 5 /;` (opérateur binaire incomplet)
+- `testfiles-minus-invalid-19_sub_fail`: `a = 5 -;` (opérateur binaire incomplet)
+- `testfiles-minus-invalid-20_sub_fail2`: `a = 5 -- 5;` (deux décréments consécutifs invalides)
+- `testfiles-mod-invalid-51_mod_fail`: `a = 5 %;` (opérateur binaire incomplet)
+- `testfiles-mul-invalid-25_mul_fail`: `a = 5 *;` (opérateur binaire incomplet)
+- `testfiles-mul-invalid-26_mul_fail2`: Erreur syntaxique similaire
