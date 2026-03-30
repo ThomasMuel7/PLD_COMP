@@ -27,7 +27,7 @@ string IRVisitor::createTemp()
 {
     string tempName = "tmp" + to_string(tempCounter++);
     currentOffset -= 4;
-    table[tempName] = {currentOffset, true, 0};
+    table[tempName] = {tempName, currentOffset, true, 0};
     return tempName;
 }
 
@@ -497,21 +497,13 @@ antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx)
 
 antlrcpp::Any IRVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx)
 {
-    (void)ctx;
-    if (!breakTargets.empty())
-    {
-        current_bb->add_exit(breakTargets.back());
-    }
+    current_bb->add_exit(breakTargets.back());
     return 0;
 }
 
 antlrcpp::Any IRVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext *ctx)
 {
-    (void)ctx;
-    if (!continueTargets.empty())
-    {
-        current_bb->add_exit(continueTargets.back());
-    }
+    current_bb->add_exit(continueTargets.back());
     return 0;
 }
 
@@ -519,7 +511,6 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
 {
     string switchVal = std::any_cast<string>(visit(ctx->expr()));
     BasicBlock *bb_end = new BasicBlock(cfg, "switch_end" + gen_unique_id(ctx));
-
     vector<pair<int, BasicBlock *>> caseBlocks;
     BasicBlock *defaultBlock = nullptr;
     for (auto part : ctx->switch_part())

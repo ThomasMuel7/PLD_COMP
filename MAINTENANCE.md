@@ -31,7 +31,7 @@ Le compilateur suit 4 étapes strictes.
 
 - Fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`
 - Entrée: AST valide + tables sémantiques
-- Sortie: un CFG par fonction, rempli en IR
+- Sortie: un CFG par fonction, représentation intermédiaire du code.
 
 4. Backend
 
@@ -89,7 +89,7 @@ Point d'entrée runtime du compilateur:
 - doubles
 - propagation de constantes
 
-Nous avons décidé de ne pas implémenter les fonctionnalités non prioritaires et déconseillées.
+De plus, ous avons décidé de ne pas implémenter les fonctionnalités non prioritaires et déconseillées.
 
 ---
 
@@ -98,13 +98,15 @@ Nous avons décidé de ne pas implémenter les fonctionnalités non prioritaires
 ### 3.1 VariableInfo (`compiler/src/SymbolTable.h`)
 
 ```text
+name        : nom source (pour messages warning/erreur)
 index       : offset pile de la variable
 isUsed      : true si la variable est lue/écrite
 declLine    : ligne de déclaration (pour warning unused)
 ```
 
-Utilite pratique:
+Utilité pratique:
 
+- `name` conserve le nom original de la variable pour les diagnostics
 - `index` sert au placement stack
 - `isUsed` + `declLine` servent au warning de fin d'analyse
 
@@ -123,15 +125,15 @@ Utilite pratique:
 
 ### 3.3 ScopeTable
 
-Definition logique:
+Définition logique:
 `ScopeTable = vector<map<nom_source, nom_unique>>`
 
 Utilite pratique:
 
-- gere le masquage de variables (shadowing)
-- permet une resolution de nom O(nombre_de_scopes)
+- gère le masquage de variables (shadowing)
+- permet une résolution de nom O(nombre_de_scopes)
 
-Pseudo-code de resolution:
+Pseudo-code de résolution:
 
 ```text
 resolve(name):
@@ -150,6 +152,40 @@ Chaque visiteur d'expression retourne un type logique interne:
 
 - `TYPE_INT`
 - `TYPE_INVALID`
+
+Signification:
+
+- `TYPE_INT`: expression semantiquement valide qui produit un entier utilisable (dans une affectation, un calcul, une condition, etc.).
+- `TYPE_INVALID`: expression invalide apres detection d'erreur semantique (variable non declaree, appel incorrect, types incompatibles, ...). Cette valeur permet de continuer l'analyse sans planter et d'eviter les erreurs en cascade.
+
+Pourquoi c'est nécessaire :
+
+Problèmes evités:
+
+1. Crash ou erreur de conversion type `Any`
+
+- Si une visite retourne une valeur inattendue, la conversion peut échouer.
+- La fonction de garde attrape ça et force un état invalide au lieu de casser l'analyse (fallback `TYPE_INVALID`).
+
+2. Cascade de messages d'erreurs inutiles
+
+- Quand une sous-expression est déja mauvaise, on la marque `TYPE_INVALID`.
+- Les parents n'ajoutent pas de faux messages "type incompatible" sur la même cause racine.
+
+2. Analyse qui continue jusqu'au bout du fichier
+
+- Meme apres une erreur locale, le visiteur continue à vérifier retours, conditions, appels, etc.
+- On remonte ainsi plusieurs vraies erreurs en un seul run.
+
+3. Convention homogene de retour pour les expressions
+
+- Sans le couple `TYPE_INT` / `TYPE_INVALID`, il faudrait des cas spéciaux partout.
+- Avec ce schéma, toutes les visites (unaires, binaires, appels, conditions) suivent la même règle.
+
+Version très simple a retenir:
+
+- `TYPE_INT` = expression correcte
+- `TYPE_INVALID` = expression déjà en erreur, on continue sans polluer les diagnostics
 
 ### 4.1 Variables d'état (membres)
 
@@ -170,7 +206,9 @@ switchDepth               : profondeur switch
 
 #### `resolveVariable(originalName)`
 
-But: trouver le nom interne visible depuis le scope courant.
+Responsabilité:
+
+- trouver le nom interne visible depuis le scope courant.
 
 Pseudo-code:
 
@@ -184,7 +222,9 @@ resolveVariable(name):
 
 #### `lookupVariableInfo(originalName)`
 
-But: obtenir `VariableInfo*` en partant d'un nom source.
+Responsabilité:
+
+- obtenir `VariableInfo*` en partant d'un nom source.
 
 Pseudo-code:
 
@@ -198,7 +238,9 @@ lookupVariableInfo(name):
 
 #### `checkUnusedVariables()`
 
-But: emettre les warnings `unused` en fin de passe.
+Responsabilité:
+
+- émettre les warnings `unused` en fin de passe.
 
 Pseudo-code:
 
@@ -296,7 +338,7 @@ visitBlock(ctx):
 Responsabilité:
 
 - parcourir la liste des éléments de déclaration (`declare_elmt`)
-- deleguer la validation/creation variable a `visitDeclare_elmt`
+- déléguer la validation/création variable à `visitDeclare_elmt`
 
 Pseudo-code:
 
@@ -330,16 +372,15 @@ visitDeclare_elmt(ctx):
 
 Responsabilité:
 
-- typer/verifier l'initialisation de type `VAR = expr` a l'intérieur d'une déclaration.
+- typer/vérifier l'initialisation de type `VAR = expr` a l'intérieur d'une déclaration.
 
 Pseudo-code:
 
 ```text
 visitAssign_stmt(lhs, rhs):
+  visit(rhs)
   unique = resolveVariable(lhs)
-  tRhs = visit(rhs)
   si unique introuvable: erreur
-  si tRhs incompatible: erreur
   table[unique].isUsed = true
   return TYPE_INT
 ```
@@ -356,13 +397,12 @@ Pseudo-code:
 visitReturn_stmt(ctx):
   si fonction void:
     si expr presente: erreur
+    si expr presente: visit(expr)
     retourner
 
   # fonction int
   si expr absente: erreur
-  sinon:
-    t = visit(expr)
-    si t non entier: erreur
+  sinon: visit(expr)
 ```
 
 #### `visitParensExpr`, `visitConstExpr`, `visitVarExpr`
@@ -388,20 +428,17 @@ visitVarExpr(name):
 
 Responsabilité:
 
-- verifier lhs déclarée
-- verifier rhs de type entier
+- vérifier lhs déclarée
+- vérifier rhs de type entier
 - marquer lhs comme utilisée
 
 Pseudo-code:
 
 ```text
 visitAssignExpr(lhs, op, rhs):
+  visit(rhs)
   unique = resolveVariable(lhs)
-  tRhs = visit(rhs)
-
   si unique introuvable: erreur; return TYPE_INVALID
-  si tRhs incompatible: erreur
-
   table[unique].isUsed = true
   return TYPE_INT
 ```
@@ -410,16 +447,15 @@ visitAssignExpr(lhs, op, rhs):
 
 Responsabilité:
 
-- verifier types des 2 operandes
-- warning division/modulo par zero constant
+- verifier types des 2 opérandes
+- warning division/modulo par zéro constant
 
 Pseudo-code:
 
 ```text
 visitMultDivModExpr(lhs, op, rhs):
-  t1 = visit(lhs)
-  t2 = visit(rhs)
-  si t1 ou t2 incompatibles: erreur
+  visit(lhs)
+  visit(rhs)
 
   si rhs est constante ET (op == / OU op == % ) ET rhs == 0:
     warning
@@ -447,20 +483,18 @@ visitPre/PostIncDecVarExpr(var):
 
 Responsabilité:
 
-- schema homogene: verifier types des operandes, retourner int.
+- schéma homogène: visiter les operandes (validation sémantique), retourner int.
 
 Pseudo-code commun:
 
 ```text
 visitBinaryLike(lhs, rhs):
-  t1 = visit(lhs)
-  t2 = visit(rhs)
-  si t1/t2 incompatibles: erreur
+  visit(lhs)
+  visit(rhs)
   return TYPE_INT
 
 visitUnaryLike(expr):
-  t = visit(expr)
-  si t incompatible: erreur
+  visit(expr)
   return TYPE_INT
 ```
 
@@ -468,10 +502,10 @@ visitUnaryLike(expr):
 
 Responsabilité:
 
-- verifier contraintes d'appel builtins/user
-- verifier arité
+- vérifier contraintes d'appel builtins/user
+- vérifier arité
 - interdire utilisation d'une fonction void comme expression
-- verifier types d'arguments
+- visiter les arguments (pour propager leurs vérifications sémantiques)
 
 Pseudo-code:
 
@@ -491,13 +525,16 @@ visitCallExpr(funcName, args):
       erreur
 
   pour arg dans args:
-    t = visit(arg)
-    si t incompatible: erreur
+    visit(arg)
 
   return TYPE_INT
 ```
 
 #### `visitBreak_stmt`, `visitContinue_stmt`
+
+Responsabilité:
+
+- valider l'usage de `break` et `continue` selon la profondeur de boucle/switch.
 
 Pseudo-code:
 
@@ -511,12 +548,15 @@ visitContinue_stmt:
 
 #### `visitWhile_stmt`
 
+Responsabilité:
+
+- valider l'expression de condition et le corps de boucle dans le bon contexte.
+
 Pseudo-code:
 
 ```text
 visitWhile_stmt(cond, body):
-  t = visit(cond)
-  si t incompatible: erreur
+  visit(cond)
   loopDepth++
   visit(body)
   loopDepth--
@@ -524,12 +564,17 @@ visitWhile_stmt(cond, body):
 
 #### `visitSwitch_stmt`
 
+Responsabilité:
+
+- valider l'expression du switch
+- détecter les `case` dupliqués et les `default` multiples
+- visiter les instructions de chaque section
+
 Pseudo-code:
 
 ```text
 visitSwitch_stmt(expr, parts):
-  t = visit(expr)
-  si t incompatible: erreur
+  visit(expr)
 
   switchDepth++
   seenCases = {}
@@ -553,7 +598,7 @@ visitSwitch_stmt(expr, parts):
 
 ## 5) IRVisitor: specification détaillée
 
-`IRVisitor` prend un AST semantiquement valide et produit l'IR execute par le backend.
+`IRVisitor` prend un AST sémantiquement valide et produit l'IR exécuté par le backend.
 
 ### 5.1 Variables d'état (membres)
 
@@ -576,9 +621,9 @@ continueTargets : pile de cibles continue
 
 #### `createTemp()`
 
-But:
+Responsabilité:
 
-- reserver un entier temporaire
+- réserver un entier temporaire
 - l'enregistrer dans `table`
 
 Pseudo-code:
@@ -593,20 +638,43 @@ createTemp():
 
 #### `resolveVariable(name)`
 
-But:
+Responsabilité:
 
 - retrouver le nom unique d'une variable source.
 - fallback: renvoyer `name` si non trouve (utile pour robustesse generation).
 
+Pseudo-code:
+
+```text
+resolveVariable(name):
+  pour i de scopeTable.size-1 à 0:
+    si name dans scopeTable[i]:
+      retourner scopeTable[i][name]
+  retourner name
+```
+
 #### `gen_unique_id(ctx)`
 
-But:
+Responsabilité:
 
 - fabriquer des labels uniques de blocs via ligne+colonne.
+
+Pseudo-code:
+
+```text
+gen_unique_id(ctx):
+  retourner "<line>_<column>"
+```
 
 ### 5.3 Fonctions visitées, une par une
 
 #### `visitProg`
+
+Responsabilité:
+
+- parcourir les fonctions et déléguer leur traduction IR.
+
+Pseudo-code:
 
 ```text
 visitProg(ctx):
@@ -647,6 +715,14 @@ visitFunction_decl(ctx):
 
 #### `visitBlock`
 
+Responsabilité:
+
+- ouvrir un scope local
+- visiter les statements dans l'ordre
+- stopper si un saut de contrôle a déjà terminé le bloc courant
+
+Pseudo-code:
+
 ```text
 visitBlock(ctx):
   push scope
@@ -659,6 +735,12 @@ visitBlock(ctx):
 
 #### `visitDeclare_stmt`
 
+Responsabilité:
+
+- visiter chaque élément de déclaration et déléguer à `visitDeclare_elmt`.
+
+Pseudo-code:
+
 ```text
 visitDeclare_stmt(ctx):
   pour elmt dans ctx.declare_elmt:
@@ -666,6 +748,13 @@ visitDeclare_stmt(ctx):
 ```
 
 #### `visitDeclare_elmt`
+
+Responsabilité:
+
+- créer un nom unique pour une variable déclarée
+- gérer la forme déclaration simple et déclaration+assignation
+
+Pseudo-code:
 
 ```text
 visitDeclare_elmt(ctx):
@@ -682,6 +771,12 @@ visitDeclare_elmt(ctx):
 
 #### `visitAssign_stmt`
 
+Responsabilité:
+
+- générer l'affectation IR d'une déclaration initialisée.
+
+Pseudo-code:
+
 ```text
 visitAssign_stmt(lhs, rhs):
   r = visit(rhs)
@@ -691,6 +786,12 @@ visitAssign_stmt(lhs, rhs):
 ```
 
 #### `visitAssignExpr`
+
+Responsabilité:
+
+- générer l'IR des affectations simples et composées.
+
+Pseudo-code:
 
 ```text
 visitAssignExpr(lhs, op, rhs):
@@ -706,6 +807,14 @@ visitAssignExpr(lhs, op, rhs):
 
 #### `visitConstExpr`, `visitVarExpr`, `visitParensExpr`
 
+Responsabilité:
+
+- convertir les constantes en temporaires IR
+- résoudre les variables dans le scope courant
+- propager les parenthèses
+
+Pseudo-code:
+
 ```text
 visitConstExpr(c):
   t = createTemp()
@@ -720,6 +829,13 @@ visitParensExpr(e):
 ```
 
 #### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+
+Responsabilité:
+
+- générer l'IR des pré/post incréments et décréments.
+- Renvoyer la variable avant incrémentation/décrémentation pour post et la variable après pour pré.
+
+Pseudo-code:
 
 ```text
 visitPreIncDecVarExpr(var, op):
@@ -740,6 +856,12 @@ visitPostIncDecVarExpr(var, op):
 
 #### `visitUnitaryExpr`
 
+Responsabilité:
+
+- générer l'IR des opérations unaires (`-`, `!`).
+
+Pseudo-code:
+
 ```text
 visitUnitaryExpr(op, e):
   x = visit(e)
@@ -751,7 +873,11 @@ visitUnitaryExpr(op, e):
 
 #### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr`
 
-Schema commun:
+Responsabilité:
+
+- générer l'IR des opérations binaires arithmétiques, de comparaison et bitwise.
+
+Schéma commun:
 
 ```text
 visitBinary(op, lhs, rhs):
@@ -763,6 +889,12 @@ visitBinary(op, lhs, rhs):
 ```
 
 #### `visitLogicANDExpr` (court-circuit)
+
+Responsabilité:
+
+- implémenter l'évaluation court-circuit de `&&`
+- éviter l'évaluation de l'opérande droit si l'opérande gauche est faux
+- produire un résultat booléen normalisé (`0` ou `1`) dans une variable IR
 
 Pseudo-code:
 
@@ -788,6 +920,12 @@ visitLogicANDExpr(lhs, rhs):
 
 #### `visitLogicORExpr` (court-circuit)
 
+Responsabilité:
+
+- implémenter l'évaluation court-circuit de `||`
+- éviter l'évaluation de l'opérande droit si l'opérande gauche est vrai
+- produire un résultat booléen normalisé (`0` ou `1`) dans une variable IR
+
 Pseudo-code:
 
 ```text
@@ -812,6 +950,14 @@ visitLogicORExpr(lhs, rhs):
 
 #### `visitCallExpr`
 
+Responsabilité:
+
+- préparer la liste d'arguments IR
+- émettre l'instruction `call`
+- retourner la variable destination du résultat
+
+Pseudo-code:
+
 ```text
 visitCallExpr(func, args):
   dest = createTemp()
@@ -823,6 +969,13 @@ visitCallExpr(func, args):
 ```
 
 #### `visitReturn_stmt`
+
+Responsabilité:
+
+- générer un `ret` explicite
+- brancher vers l'épilogue de la fonction
+
+Pseudo-code:
 
 ```text
 visitReturn_stmt(ctx):
@@ -836,6 +989,13 @@ visitReturn_stmt(ctx):
 ```
 
 #### `visitIf_stmt`
+
+Responsabilité:
+
+- créer les blocs condition/then/else/end
+- connecter les branches selon la condition
+
+Pseudo-code:
 
 ```text
 visitIf_stmt(cond, thenStmt, elseStmt?):
@@ -852,6 +1012,13 @@ visitIf_stmt(cond, thenStmt, elseStmt?):
 ```
 
 #### `visitWhile_stmt`
+
+Responsabilité:
+
+- créer les blocs cond/body/end
+- gérer les piles `breakTargets` et `continueTargets`
+
+Pseudo-code:
 
 ```text
 visitWhile_stmt(cond, body):
@@ -873,12 +1040,21 @@ visitWhile_stmt(cond, body):
 
 #### `visitBreak_stmt`, `visitContinue_stmt`
 
+Responsabilité:
+
+- générer les sauts vers les cibles courantes de `break` et `continue`.
+
+Pseudo-code:
+
 ```text
 visitBreak_stmt:
-  si breakTargets non vide: jump breakTargets.top
+  jump breakTargets.top
 
 visitContinue_stmt:
-  si continueTargets non vide: jump continueTargets.top
+  jump continueTargets.top
+
+Précondition:
+- la passe sémantique (SymbolVisitor) garantie que `break`/`continue` sont utilisés dans un contexte valide
 ```
 
 #### `visitSwitch_stmt`
@@ -936,7 +1112,7 @@ Le backend reste compatible avec des structures historiques plus larges, mais le
 ```bash
 cd compiler
 make clean
-make -j4
+make
 ```
 
 ### 7.2 Régression recommandée (scope supporté)
@@ -955,10 +1131,10 @@ Note:
 
 Si une nouvelle fonctionnalité est ajoutée:
 
-1. Étendre `ifcc.g4` minimalement
-2. Ajouter/adapter les règles sémantiques dans `SymbolVisitor`
-3. Ajouter la génération IR dans `IRVisitor`
-4. Créer un dossier `not_implemented/` dans la catégorie de tests de la fonctionnalité et y placer les nouveaux cas
+1. Créer un dossier `not_implemented/` dans la catégorie de tests de la fonctionnalité et y placer les nouveaux cas
+2. Étendre `ifcc.g4` minimalement
+3. Ajouter/adapter les règles sémantiques dans `SymbolVisitor`
+4. Ajouter la génération IR dans `IRVisitor`
 5. Une fois les tests au vert, supprimer `not_implemented/` et déplacer les cas vers `valid/` et `invalid/`
 6. Mettre à jour README + ce fichier
 
@@ -995,7 +1171,7 @@ int main() {
 
 ### 9.1 Parsing (ANTLR)
 
-Points cle:
+Points clé:
 
 - `prog` contient 2 `function_decl`
 - la déclaration `int z = x + y;` est un `declare_stmt` contenant un `declare_elmt(assign_stmt)`
@@ -1034,11 +1210,11 @@ Effet concret sur les tables:
 
 ### 9.3 Passe IR (`IRVisitor`)
 
-Idee generale:
+Idée générale:
 
 - un CFG par fonction
-- chaque expression cree des temporaires (`tmpN`)
-- chaque contrôle (`if`, `while`, `switch`) cree des basic blocks relies
+- chaque expression créer des temporaires (`tmpN`)
+- chaque contrôle (`if`, `while`, `switch`) créer des basic blocks reliés
 
 Pseudo-trace simplifiée pour `main`:
 
@@ -1064,7 +1240,71 @@ if_end:
   jump epilogue
 ```
 
-Résultat:
+#### Visualiser les graphes
 
-- CFG `main` avec blocs `body`, `if_then`, `if_end`, `epilogue`
-- IR strictement entier, sans operations mémoire indirecte
+Pour visualiser les graphes mermaid en mode preview il faut installer une extension qui gère les preview mermaid sur VSCode comme la suivante par exemple :
+[Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+
+##### CFG pour `add(int x, int y)`:
+
+```mermaid
+graph TD
+  A["prologue<br/>setup stack frame<br/>params: x_0, y_1"] --> B["body<br/>t0 = add x_0, y_1<br/>copy z_2, t0"]
+  B --> C["epilogue<br/>ret z_2<br/>restore stack"]
+
+  classDef pro fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+  classDef body fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef epi fill:#fee2e2,stroke:#b91c1c,stroke-width:1px,color:#111827
+  class A pro
+  class B body
+  class C epi
+```
+
+Structure simple : 3 blocs linéaires sans branchement.
+
+- Paramètres `x_0`, `y_1` chargés en pile
+- Temporaire `t0` pour stocker le résultat de l'addition
+- Variable locale `z_2` reçoit le résultat
+
+#### CFG pour `main()`:
+
+```mermaid
+graph TD
+  A["prologue<br/>setup stack frame"] --> B["body<br/>t0 = ldconst 2<br/>copy a_3, t0<br/>t1 = ldconst 3<br/>copy b_4, t1<br/>t2 = cmp_lt a_3, b_4"]
+  B -->|"t2 != 0 (a < b)"| C["if_then<br/>t3 = ldconst 10<br/>add a_3, a_3, t3<br/>jump if_end"]
+  B -->|"t2 == 0 (a >= b)"| D["if_end<br/>t4 = call add(a_3, b_4)<br/>ret t4"]
+  C --> D
+  D --> E["epilogue<br/>restore stack"]
+
+  classDef pro fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+  classDef cond fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef then fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef epi fill:#fee2e2,stroke:#b91c1c,stroke-width:1px,color:#111827
+  class A pro
+  class B cond
+  class C then
+  class D join
+  class E epi
+```
+
+Structure avec contrôle de flux : 5 blocs avec branchement conditionnel.
+
+**Lexique IR utilisé:**
+
+- `ldconst <dest> <value>` : charger une constante
+- `copy <dest> <src>` : copier une valeur
+- `add/sub/mul/div <dest> <lhs> <rhs>` : opérations arithmétiques
+- `cmp_lt <dest> <lhs> <rhs>` : comparaison (<)
+- `branch <cond>` : bifurcation conditionnelle
+- `call <func> <args>` : appel de fonction
+- `ret <value>` : retour
+- `jump <target>` : saut inconditionnel
+- `t0, t1, ...` : temporaires (variables de courte durée)
+- `a_3, b_4, ...` : variables locales avec suffixes uniques
+
+**Résultat:**
+
+- CFG `add` : 3 blocs, un seul chemin d'exécution
+- CFG `main` : 5 blocs, avec convergence après le `if` (diamond pattern classique)
+- IR strictement entier, sans opérations mémoire indirecte

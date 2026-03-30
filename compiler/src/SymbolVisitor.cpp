@@ -7,24 +7,8 @@
 #include <string>
 
 using namespace std;
-
-namespace
-{
-    constexpr int TYPE_INT = 0;
-    constexpr int TYPE_INVALID = 1;
-
-    int anyToExprType(const antlrcpp::Any &v)
-    {
-        try
-        {
-            return std::any_cast<int>(v);
-        }
-        catch (...)
-        {
-            return TYPE_INVALID;
-        }
-    }
-}
+const int TYPE_INT = 0;
+const int TYPE_INVALID = 1;
 
 SymbolVisitor::SymbolVisitor()
 {
@@ -34,23 +18,6 @@ SymbolVisitor::SymbolVisitor()
 static ReturnType parseReturnType(const string &typeText)
 {
     return (typeText == "void") ? ReturnType::Void : ReturnType::Int;
-}
-
-static string baseNameFromUnique(const string &uniqueName)
-{
-    size_t pos = uniqueName.rfind('_');
-    if (pos == string::npos || pos + 1 >= uniqueName.size())
-    {
-        return uniqueName;
-    }
-    for (size_t i = pos + 1; i < uniqueName.size(); i++)
-    {
-        if (!isdigit(static_cast<unsigned char>(uniqueName[i])))
-        {
-            return uniqueName;
-        }
-    }
-    return uniqueName.substr(0, pos);
 }
 
 string SymbolVisitor::resolveVariable(const string &originalName)
@@ -78,7 +45,7 @@ void SymbolVisitor::registerVariable(const string &originalName, int declLine)
     string uniqueName = originalName + "_" + to_string(uniqueVarId++);
     scopeTable.back()[originalName] = uniqueName;
     currentOffset -= 4;
-    table[uniqueName] = {currentOffset, false, declLine};
+    table[uniqueName] = {originalName, currentOffset, false, declLine};
 }
 
 VariableInfo *SymbolVisitor::lookupVariableInfo(const string &originalName)
@@ -94,6 +61,25 @@ VariableInfo *SymbolVisitor::lookupVariableInfo(const string &originalName)
         return nullptr;
     }
     return &it->second;
+}
+
+void SymbolVisitor::checkUnusedVariables()
+{
+    for (const auto &entry : table)
+    {
+        const string &uniqueName = entry.first;
+        const VariableInfo &info = entry.second;
+        if (!info.isUsed)
+        {
+            cerr << "Warning: la variable '" << info.name
+                 << "' est declaree mais jamais utilisee";
+            if (info.declLine > 0)
+            {
+                cerr << " (ligne " << info.declLine << ")";
+            }
+            cerr << "." << endl;
+        }
+    }
 }
 
 antlrcpp::Any SymbolVisitor::visitProg(ifccParser::ProgContext *ctx)
@@ -132,25 +118,6 @@ antlrcpp::Any SymbolVisitor::visitProg(ifccParser::ProgContext *ctx)
     return 0;
 }
 
-void SymbolVisitor::checkUnusedVariables()
-{
-    for (const auto &entry : table)
-    {
-        const string &uniqueName = entry.first;
-        const VariableInfo &info = entry.second;
-        if (!info.isUsed)
-        {
-            cerr << "Warning: la variable '" << baseNameFromUnique(uniqueName)
-                 << "' est declaree mais jamais utilisee";
-            if (info.declLine > 0)
-            {
-                cerr << " (ligne " << info.declLine << ")";
-            }
-            cerr << "." << endl;
-        }
-    }
-}
-
 antlrcpp::Any SymbolVisitor::visitFunction_decl(ifccParser::Function_declContext *ctx)
 {
     currentFunctionName = ctx->VAR()->getText();
@@ -181,7 +148,7 @@ antlrcpp::Any SymbolVisitor::visitFunction_decl(ifccParser::Function_declContext
             scopeTable.back()[originalName] = uniqueName;
             int declLine = p->start->getLine();
             currentOffset -= 4;
-            table[uniqueName] = {currentOffset, false, declLine};
+            table[uniqueName] = {originalName, currentOffset, false, declLine};
 
             if (fit != functionTable.end())
             {
@@ -203,15 +170,6 @@ antlrcpp::Any SymbolVisitor::visitBlock(ifccParser::BlockContext *ctx)
         visit(stmt);
     }
     scopeTable.pop_back();
-    return 0;
-}
-
-antlrcpp::Any SymbolVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
-{
-    for (auto elmt : ctx->declare_elmt())
-    {
-        visit(elmt);
-    }
     return 0;
 }
 
@@ -237,21 +195,15 @@ antlrcpp::Any SymbolVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *
 
 antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
 {
+    visit(ctx->expr());
     string originalName = ctx->VAR()->getText();
     string uniqueName = resolveVariable(originalName);
-    int rhsType = anyToExprType(visit(ctx->expr()));
 
     if (uniqueName.empty())
     {
         cerr << "Erreur: tentative d'assignation sur la variable non declaree '" << originalName << "'." << endl;
         hasError = true;
         return TYPE_INVALID;
-    }
-
-    if (rhsType != TYPE_INT && rhsType != TYPE_INVALID)
-    {
-        cerr << "Erreur: affectation avec un type incompatible pour '" << originalName << "'." << endl;
-        hasError = true;
     }
 
     table[uniqueName].isUsed = true;
@@ -280,24 +232,17 @@ antlrcpp::Any SymbolVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ct
         return 0;
     }
 
-    int t = anyToExprType(visit(ctx->expr()));
-    if (t != TYPE_INT && t != TYPE_INVALID)
-    {
-        cerr << "Erreur: return d'une expression non entiere dans une fonction int ('"
-             << currentFunctionName << "')." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr());
     return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx)
 {
-    return anyToExprType(visit(ctx->expr()));
+    return std::any_cast<int>(visit(ctx->expr()));
 }
 
 antlrcpp::Any SymbolVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx)
 {
-    (void)ctx;
     return TYPE_INT;
 }
 
@@ -319,41 +264,21 @@ antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
 {
     string originalName = ctx->VAR()->getText();
     string uniqueName = resolveVariable(originalName);
-    int rhsType = anyToExprType(visit(ctx->expr()));
-
+    visit(ctx->expr());
     if (uniqueName.empty())
     {
         cerr << "Erreur: tentative d'assignation sur la variable non declaree '" << originalName << "'." << endl;
         hasError = true;
         return TYPE_INVALID;
     }
-
-    if (rhsType != TYPE_INT && rhsType != TYPE_INVALID)
-    {
-        cerr << "Erreur: affectation avec un type incompatible pour '" << originalName << "'." << endl;
-        hasError = true;
-    }
-
     table[uniqueName].isUsed = true;
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur arithmetique applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur arithmetique applique a un type incompatible." << endl;
-        hasError = true;
-    }
-
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     auto rightConst = dynamic_cast<ifccParser::ConstExprContext *>(ctx->expr(1));
     string op = ctx->OP->getText();
     if (rightConst != nullptr && (op == "/" || op == "%"))
@@ -364,7 +289,6 @@ antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprConte
             cerr << "Warning: division ou modulo par zero." << endl;
         }
     }
-
     return TYPE_INT;
 }
 
@@ -402,148 +326,63 @@ antlrcpp::Any SymbolVisitor::visitPostIncDecVarExpr(ifccParser::PostIncDecVarExp
 
 antlrcpp::Any SymbolVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx)
 {
-    int t = anyToExprType(visit(ctx->expr()));
-    if (t != TYPE_INT && t != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur unaire applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr());
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur arithmetique applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur arithmetique applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: comparaison appliquee a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: comparaison appliquee a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: comparaison appliquee a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: comparaison appliquee a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '&' applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '&' applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '^' applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '^' applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '|' applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '|' applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '&&' applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '&&' applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
 antlrcpp::Any SymbolVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx)
 {
-    int leftType = anyToExprType(visit(ctx->expr(0)));
-    int rightType = anyToExprType(visit(ctx->expr(1)));
-    if (leftType != TYPE_INT && leftType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '||' applique a un type incompatible." << endl;
-        hasError = true;
-    }
-    if (rightType != TYPE_INT && rightType != TYPE_INVALID)
-    {
-        cerr << "Erreur: operateur '||' applique a un type incompatible." << endl;
-        hasError = true;
-    }
+    visit(ctx->expr(0));
+    visit(ctx->expr(1));
     return TYPE_INT;
 }
 
@@ -599,12 +438,7 @@ antlrcpp::Any SymbolVisitor::visitCallExpr(ifccParser::CallExprContext *ctx)
 
     for (auto argCtx : ctx->expr())
     {
-        int argType = anyToExprType(visit(argCtx));
-        if (argType != TYPE_INT && argType != TYPE_INVALID)
-        {
-            cerr << "Erreur: argument de type incompatible dans l'appel de fonction." << endl;
-            hasError = true;
-        }
+        visit(argCtx);
     }
 
     return TYPE_INT;
@@ -612,7 +446,6 @@ antlrcpp::Any SymbolVisitor::visitCallExpr(ifccParser::CallExprContext *ctx)
 
 antlrcpp::Any SymbolVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx)
 {
-    (void)ctx;
     if (loopDepth == 0 && switchDepth == 0)
     {
         cerr << "Erreur: 'break' utilise hors d'une boucle ou d'un switch." << endl;
@@ -623,7 +456,6 @@ antlrcpp::Any SymbolVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx)
 
 antlrcpp::Any SymbolVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext *ctx)
 {
-    (void)ctx;
     if (loopDepth == 0)
     {
         cerr << "Erreur: 'continue' utilise hors d'une boucle." << endl;
@@ -634,13 +466,7 @@ antlrcpp::Any SymbolVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext
 
 antlrcpp::Any SymbolVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx)
 {
-    int condType = anyToExprType(visit(ctx->expr()));
-    if (condType != TYPE_INT && condType != TYPE_INVALID)
-    {
-        cerr << "Erreur: condition de while non entiere." << endl;
-        hasError = true;
-    }
-
+    visit(ctx->expr());
     loopDepth++;
     visit(ctx->stmt());
     loopDepth--;
@@ -649,13 +475,7 @@ antlrcpp::Any SymbolVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx)
 
 antlrcpp::Any SymbolVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
 {
-    int swType = anyToExprType(visit(ctx->expr()));
-    if (swType != TYPE_INT && swType != TYPE_INVALID)
-    {
-        cerr << "Erreur: expression de switch doit etre de type int." << endl;
-        hasError = true;
-    }
-
+    visit(ctx->expr());
     set<int> seenCases;
     bool hasDefault = false;
 

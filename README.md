@@ -100,7 +100,6 @@ Les éléments facultatifs suivants ont été volontairement non traités dans l
 - tableaux 1D
 - pointeurs
 - chaînes de caractères représentées par des tableaux de `char`
-- métadonnées internes legacy liées aux pointeurs/tableaux (supprimées des structures)
 
 Nous avons également décidé de ne pas traiter les fonctionnalités non prioritaires et déconseillées.
 
@@ -130,6 +129,20 @@ Notes:
 
 - la détection de division par zéro ne couvre pas tous les cas dynamiques (exemple: `(0)` et variable qui vaut 0 ne sont pas traités)
 - les warnings (variable non utilisée, division/modulo par zéro constant) ne bloquent pas la compilation
+
+### 3.1 Pourquoi `TYPE_INT` et `TYPE_INVALID` ?
+
+- `TYPE_INT`: l'expression est valide et se comporte comme un `int`.
+- `TYPE_INVALID`: une erreur a déjà été trouvée dans l'expression.
+
+L'objectif est simple: continuer l'analyse même après une première erreur, pour afficher des messages utiles sans planter.
+
+Exemple:
+
+- `a = b + 1;` avec `b` non déclarée
+- `b` produit `TYPE_INVALID`
+- le reste de l'expression est quand même visité
+- le compilateur peut signaler d'autres problèmes dans le fichier
 
 ## 4. Génération de code
 
@@ -163,12 +176,16 @@ Le backend gère plusieurs fonctions dans un même programme:
 compiler/
   ifcc.g4              # grammaire ANTLR
   main.cpp             # point d'entrée CLI
-  src/SymbolTable.h    # symboles variables + signatures de fonctions
+  src/SymbolTable.h    # symboles variables
+  src/ScopeTable.h     # table des contextes
+  src/FunctionTable.h  # table des fonctions
   src/SymbolVisitor.*  # vérifications sémantiques
-  src/IRVisitor.*      # AST -> IR/CFG
+  src/IRVisitor.*      # AST
+  src/IR.*             # IR
+  src/CFG.*            # CFG
+  src/BasicBlock.*     # BasicBlock
   src/backend.*        # génération assembleur x86-64 / AArch64
   Makefile             # build ANTLR + C++
-  config*.mk           # config machine (ANTLR jar/runtime)
 
 testfiles/
   add/
@@ -242,7 +259,7 @@ Pour toute nouvelle fonctionnalité, on crée systématiquement un dossier `not_
 Couverture actuelle (sélection):
 
 - programmes valides: constantes, variables, priorités, parenthèses, chaînes d'opérations
-- opérateurs testés: `+ - * / %`, bitwise, comparaisons, égalité, logiques paresseux
+- opérateurs testés: `+ - * / %`, bitwise, comparaisons, égalité, logiques
 - déclarations multiples avec assignment sur la même ligne (`declare-multiple-assign`)
 - structures de contrôle: `if`, `if/else`, `while`, `switch`
 - appels de fonctions (définition, arité, paramètres)

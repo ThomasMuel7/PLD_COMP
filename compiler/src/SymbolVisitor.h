@@ -3,6 +3,8 @@
 #include "../generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
 #include "ScopeTable.h"
+#include "FunctionTable.h"
+#include <string>
 
 class SymbolVisitor : public ifccBaseVisitor
 {
@@ -29,7 +31,6 @@ public:
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
     virtual antlrcpp::Any visitFunction_decl(ifccParser::Function_declContext *ctx) override;
     virtual antlrcpp::Any visitBlock(ifccParser::BlockContext *ctx) override;
-    virtual antlrcpp::Any visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) override;
     virtual antlrcpp::Any visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx) override;
     virtual antlrcpp::Any visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) override;
     virtual antlrcpp::Any visitReturn_stmt(ifccParser::Return_stmtContext *ctx) override;
@@ -55,3 +56,5 @@ public:
     virtual antlrcpp::Any visitWhile_stmt(ifccParser::While_stmtContext *ctx) override;
     virtual antlrcpp::Any visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) override;
 };
+
+static ReturnType parseReturnType(const std::string &typeText);

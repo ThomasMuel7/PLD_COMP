@@ -3,9 +3,12 @@
 #include "../generated/ifccBaseVisitor.h"
 #include "SymbolTable.h"
 #include "ScopeTable.h"
+#include "FunctionTable.h"
 #include "IR.h"
 #include "BasicBlock.h"
 #include "CFG.h"
+
+#include <string>
 
 class IRVisitor : public ifccBaseVisitor
 {
@@ -63,3 +66,5 @@ public:
     virtual antlrcpp::Any visitContinue_stmt(ifccParser::Continue_stmtContext *ctx) override;
     virtual antlrcpp::Any visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) override;
 };
+
+static ReturnType parseReturnType(const std::string &typeText);
