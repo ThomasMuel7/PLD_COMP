@@ -4,14 +4,15 @@
 #include "SymbolTable.h"
 #include "ScopeTable.h"
 
-class SymbolVisitor : public ifccBaseVisitor {
+class SymbolVisitor : public ifccBaseVisitor
+{
 public:
     SymbolVisitor();
 
     SymbolTable table;
     FunctionTable functionTable;
-    ScopeTable scopeTable; 
-    
+    ScopeTable scopeTable;
+
     int currentOffset = 0;
     int uniqueVarId = 0;
     bool hasError = false;
@@ -20,9 +21,10 @@ public:
     int loopDepth = 0;
     int switchDepth = 0;
 
-    std::string resolveVariable(const std::string& originalName);
+    std::string resolveVariable(const std::string &originalName);
     void registerVariable(const std::string &originalName, int declLine);
-    VariableInfo* lookupVariableInfo(const std::string& originalName);
+    void checkUnusedVariables();
+    VariableInfo *lookupVariableInfo(const std::string &originalName);
 
     virtual antlrcpp::Any visitProg(ifccParser::ProgContext *ctx) override;
     virtual antlrcpp::Any visitFunction_decl(ifccParser::Function_declContext *ctx) override;
@@ -52,6 +54,4 @@ public:
     virtual antlrcpp::Any visitContinue_stmt(ifccParser::Continue_stmtContext *ctx) override;
     virtual antlrcpp::Any visitWhile_stmt(ifccParser::While_stmtContext *ctx) override;
     virtual antlrcpp::Any visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) override;
-
-    void checkUnusedVariables();
 };

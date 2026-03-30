@@ -4,6 +4,7 @@ Ce fichier est volontairement une documentation technique complète du projet.
 Il peut être lu comme un manuel d'architecture + pseudo-code de référence.
 
 Objectif principal:
+
 - expliquer clairement le rôle de chaque module
 - expliciter les variables d'état importantes
 - donner un pseudo-code pour chaque fonction clé des passes sémantique et IR
@@ -15,26 +16,31 @@ Objectif principal:
 Le compilateur suit 4 étapes strictes.
 
 1. Parsing
+
 - Fichier: `compiler/ifcc.g4`
 - Entrée: source C simplifié
 - Sortie: AST ANTLR
 
 2. Vérification sémantique
+
 - Fichiers: `compiler/src/SymbolVisitor.h`, `compiler/src/SymbolVisitor.cpp`
 - Entrée: AST
 - Sortie: erreurs/warnings + tables (`SymbolTable`, `FunctionTable`)
 
 3. Génération IR + CFG
+
 - Fichiers: `compiler/src/IRVisitor.h`, `compiler/src/IRVisitor.cpp`
 - Entrée: AST valide + tables sémantiques
 - Sortie: un CFG par fonction, rempli en IR
 
 4. Backend
+
 - Fichiers: `compiler/src/backend.h`, `compiler/src/backend.cpp`
 - Entrée: CFG/IR
 - Sortie: assembleur final
 
 Point d'entrée runtime du compilateur:
+
 - `compiler/main.cpp`
 
 ---
@@ -42,11 +48,13 @@ Point d'entrée runtime du compilateur:
 ## 2) Langage supporté (scope officiel)
 
 ### 2.1 Types et fonctions
+
 - types de retour: `int`, `void`
 - paramètres: uniquement `int x`
 - arité max vérifiée: 6 arguments
 
 ### 2.2 Déclarations
+
 - déclaration simple: `int a;`
 - déclaration avec init: `int a = expr;`
 - déclaration multiple: `int a, b = 1, c;`
@@ -54,6 +62,7 @@ Point d'entrée runtime du compilateur:
 - déclaration possible dans tout bloc
 
 ### 2.3 Expressions supportées
+
 - constantes: `INT`, `CHAR`
 - variable
 - appel de fonction
@@ -66,6 +75,7 @@ Point d'entrée runtime du compilateur:
 - logiques court-circuit: `&& ||`
 
 ### 2.4 Contrôle de flux supporté
+
 - `if / else`
 - `while`
 - `switch / case / default`
@@ -73,6 +83,7 @@ Point d'entrée runtime du compilateur:
 - `return`
 
 ### 2.5 Features explicitement non supportées (parmi les facultatifs)
+
 - pointeurs (`*`, `&`)
 - tableaux (`a[i]`, déclaration tableau)
 - doubles
@@ -93,6 +104,7 @@ declLine    : ligne de déclaration (pour warning unused)
 ```
 
 Utilite pratique:
+
 - `index` sert au placement stack
 - `isUsed` + `declLine` servent au warning de fin d'analyse
 
@@ -105,6 +117,7 @@ paramUniqueNames : noms internes scopes des paramètres
 ```
 
 Utilite pratique:
+
 - verification d'appels (existence + arité)
 - mapping cohérent entre front-end sémantique et IR/backend
 
@@ -114,6 +127,7 @@ Definition logique:
 `ScopeTable = vector<map<nom_source, nom_unique>>`
 
 Utilite pratique:
+
 - gere le masquage de variables (shadowing)
 - permet une resolution de nom O(nombre_de_scopes)
 
@@ -133,6 +147,7 @@ resolve(name):
 
 `SymbolVisitor` est la passe de cohérence sémantique.
 Chaque visiteur d'expression retourne un type logique interne:
+
 - `TYPE_INT`
 - `TYPE_INVALID`
 
@@ -154,6 +169,7 @@ switchDepth               : profondeur switch
 ### 4.2 Helpers
 
 #### `resolveVariable(originalName)`
+
 But: trouver le nom interne visible depuis le scope courant.
 
 Pseudo-code:
@@ -167,6 +183,7 @@ resolveVariable(name):
 ```
 
 #### `lookupVariableInfo(originalName)`
+
 But: obtenir `VariableInfo*` en partant d'un nom source.
 
 Pseudo-code:
@@ -180,6 +197,7 @@ lookupVariableInfo(name):
 ```
 
 #### `checkUnusedVariables()`
+
 But: emettre les warnings `unused` en fin de passe.
 
 Pseudo-code:
@@ -194,7 +212,9 @@ checkUnusedVariables():
 ### 4.3 Fonctions visitées, une par une
 
 #### `visitProg`
+
 Responsabilité:
+
 - prédéclarer toutes les signatures de fonction
 - détectér doublons
 - imposer présence de `main`
@@ -221,7 +241,9 @@ visitProg(ctx):
 ```
 
 #### `visitFunction_decl`
+
 Responsabilité:
+
 - initialiser le contexte fonction
 - créer le scope des paramètres
 - allouer les paramètres en locals internes
@@ -254,7 +276,9 @@ visitFunction_decl(ctx):
 ```
 
 #### `visitBlock`
+
 Responsabilité:
+
 - ouvrir/fermer un scope lexical
 
 Pseudo-code:
@@ -268,7 +292,9 @@ visitBlock(ctx):
 ```
 
 #### `visitDeclare_stmt`
+
 Responsabilité:
+
 - parcourir la liste des éléments de déclaration (`declare_elmt`)
 - deleguer la validation/creation variable a `visitDeclare_elmt`
 
@@ -281,7 +307,9 @@ visitDeclare_stmt(ctx):
 ```
 
 #### `visitDeclare_elmt`
+
 Responsabilité:
+
 - gérer un élément `VAR` simple
 - gérer un élément `assign_stmt` (déclaration + assignment dans la même ligne)
 
@@ -299,7 +327,9 @@ visitDeclare_elmt(ctx):
 ```
 
 #### `visitAssign_stmt`
+
 Responsabilité:
+
 - typer/verifier l'initialisation de type `VAR = expr` a l'intérieur d'une déclaration.
 
 Pseudo-code:
@@ -315,7 +345,9 @@ visitAssign_stmt(lhs, rhs):
 ```
 
 #### `visitReturn_stmt`
+
 Responsabilité:
+
 - valider la cohérence `return` avec le type de la fonction courante.
 
 Pseudo-code:
@@ -334,7 +366,9 @@ visitReturn_stmt(ctx):
 ```
 
 #### `visitParensExpr`, `visitConstExpr`, `visitVarExpr`
+
 Responsabilité:
+
 - propagation des types de base.
 
 Pseudo-code:
@@ -351,7 +385,9 @@ visitVarExpr(name):
 ```
 
 #### `visitAssignExpr`
+
 Responsabilité:
+
 - verifier lhs déclarée
 - verifier rhs de type entier
 - marquer lhs comme utilisée
@@ -371,7 +407,9 @@ visitAssignExpr(lhs, op, rhs):
 ```
 
 #### `visitMultDivModExpr`
+
 Responsabilité:
+
 - verifier types des 2 operandes
 - warning division/modulo par zero constant
 
@@ -390,7 +428,9 @@ visitMultDivModExpr(lhs, op, rhs):
 ```
 
 #### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+
 Responsabilité:
+
 - exiger une variable déclarée, marquer usage.
 
 Pseudo-code:
@@ -404,7 +444,9 @@ visitPre/PostIncDecVarExpr(var):
 ```
 
 #### `visitUnitaryExpr`, `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitXORExpr`, `visitLogicBitORExpr`, `visitLogicANDExpr`, `visitLogicORExpr`
+
 Responsabilité:
+
 - schema homogene: verifier types des operandes, retourner int.
 
 Pseudo-code commun:
@@ -423,7 +465,9 @@ visitUnaryLike(expr):
 ```
 
 #### `visitCallExpr`
+
 Responsabilité:
+
 - verifier contraintes d'appel builtins/user
 - verifier arité
 - interdire utilisation d'une fonction void comme expression
@@ -454,6 +498,7 @@ visitCallExpr(funcName, args):
 ```
 
 #### `visitBreak_stmt`, `visitContinue_stmt`
+
 Pseudo-code:
 
 ```text
@@ -465,6 +510,7 @@ visitContinue_stmt:
 ```
 
 #### `visitWhile_stmt`
+
 Pseudo-code:
 
 ```text
@@ -477,6 +523,7 @@ visitWhile_stmt(cond, body):
 ```
 
 #### `visitSwitch_stmt`
+
 Pseudo-code:
 
 ```text
@@ -528,7 +575,9 @@ continueTargets : pile de cibles continue
 ### 5.2 Helpers
 
 #### `createTemp()`
+
 But:
+
 - reserver un entier temporaire
 - l'enregistrer dans `table`
 
@@ -543,12 +592,16 @@ createTemp():
 ```
 
 #### `resolveVariable(name)`
+
 But:
+
 - retrouver le nom unique d'une variable source.
 - fallback: renvoyer `name` si non trouve (utile pour robustesse generation).
 
 #### `gen_unique_id(ctx)`
+
 But:
+
 - fabriquer des labels uniques de blocs via ligne+colonne.
 
 ### 5.3 Fonctions visitées, une par une
@@ -562,7 +615,9 @@ visitProg(ctx):
 ```
 
 #### `visitFunction_decl`
+
 Responsabilité:
+
 - créer CFG + blocs de base
 - initialiser mapping des paramètres
 - visiter le corps
@@ -695,6 +750,7 @@ visitUnitaryExpr(op, e):
 ```
 
 #### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr`
+
 Schema commun:
 
 ```text
@@ -826,7 +882,9 @@ visitContinue_stmt:
 ```
 
 #### `visitSwitch_stmt`
+
 Responsabilité:
+
 - evaluer l'expression switch une fois
 - créer une chaine de dispatch (cmp_eq) vers chaque case
 - supporter default
@@ -861,11 +919,12 @@ visitSwitch_stmt(expr, parts):
 
 ---
 
-## 6) Backend et consequences du mode int-only
+## 6) Backend et conséquences du mode int-only
 
-Le backend reste compatible avec des structures historiques plus larges, mais le front-end actuel n'emet que:
+Le backend reste compatible avec des structures historiques plus larges, mais le front-end actuel n'émet que:
+
 - des valeurs entières
-- des operations arith/logiques/comparaison entières
+- des opérations arith/logiques/comparaison entières
 - des sauts de contrôle classiques
 
 ---
@@ -880,28 +939,31 @@ make clean
 make -j4
 ```
 
-### 7.2 Regression recommandee (scope supporté)
+### 7.2 Régression recommandée (scope supporté)
 
 ```bash
 python3 ifcc-test.py testfiles
 ```
 
 Note:
-- `testfiles/undefined` fait partie de la validation mais ne donne jamais le bon résultat (comportements C non definis).
+
+- `testfiles/undefined` peut produire des résultats différents selon le compilateur, la version et la plate-forme (comportement C non défini). Cette catégorie ne doit pas être utilisée comme oracle strict.
 
 ---
 
-## 8) Regles d'evolution (ordre obligatoire)
+## 8) Règles d'évolution (ordre obligatoire)
 
-Si une nouvelle feature est ajoutee:
+Si une nouvelle fonctionnalité est ajoutée:
 
-1. Etendre `ifcc.g4` minimalement
+1. Étendre `ifcc.g4` minimalement
 2. Ajouter/adapter les règles sémantiques dans `SymbolVisitor`
-3. Ajouter la generation IR dans `IRVisitor`
-4. Ajouter tests `valid` et `invalid`
-5. Mettre à jour README + ce fichier
+3. Ajouter la génération IR dans `IRVisitor`
+4. Créer un dossier `not_implemented/` dans la catégorie de tests de la fonctionnalité et y placer les nouveaux cas
+5. Une fois les tests au vert, supprimer `not_implemented/` et déplacer les cas vers `valid/` et `invalid/`
+6. Mettre à jour README + ce fichier
 
-Regle forte:
+Règle forte:
+
 - ne jamais ajouter de génération IR sans barrière sémantique explicite.
 
 ---
@@ -909,6 +971,7 @@ Regle forte:
 ## 9) Exemple fil-rouge (du source au CFG)
 
 Objectif de cette section:
+
 - montrer le chemin d'un mini programme dans toutes les passes
 - nommer les fonctions qui interviennent et ce qu'elles produisent
 
@@ -933,6 +996,7 @@ int main() {
 ### 9.1 Parsing (ANTLR)
 
 Points cle:
+
 - `prog` contient 2 `function_decl`
 - la déclaration `int z = x + y;` est un `declare_stmt` contenant un `declare_elmt(assign_stmt)`
 - `a += 10` est un `AssignExpr` (operateur compose)
@@ -962,6 +1026,7 @@ visitProg
 ```
 
 Effet concret sur les tables:
+
 - `functionTable[add] = {returnType=Int, arity=2, ...}`
 - `functionTable[main] = {returnType=Int, arity=0, ...}`
 - `table` contient des noms uniques (`x_0`, `y_1`, `z_2`, `a_3`, `b_4`, ...)
@@ -970,6 +1035,7 @@ Effet concret sur les tables:
 ### 9.3 Passe IR (`IRVisitor`)
 
 Idee generale:
+
 - un CFG par fonction
 - chaque expression cree des temporaires (`tmpN`)
 - chaque contrôle (`if`, `while`, `switch`) cree des basic blocks relies
@@ -999,6 +1065,6 @@ if_end:
 ```
 
 Résultat:
+
 - CFG `main` avec blocs `body`, `if_then`, `if_end`, `epilogue`
 - IR strictement entier, sans operations mémoire indirecte
-

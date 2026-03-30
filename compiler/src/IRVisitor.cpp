@@ -5,42 +5,51 @@
 
 using namespace std;
 
-static ReturnType parseReturnType(const string &typeText) {
+static ReturnType parseReturnType(const string &typeText)
+{
     return (typeText == "void") ? ReturnType::Void : ReturnType::Int;
 }
 
-string IRVisitor::resolveVariable(const string &originalName) {
-    for (int i = (int)scopeTable.size() - 1; i >= 0; i--) {
+string IRVisitor::resolveVariable(const string &originalName)
+{
+    for (int i = (int)scopeTable.size() - 1; i >= 0; i--)
+    {
         auto it = scopeTable[i].find(originalName);
-        if (it != scopeTable[i].end()) {
+        if (it != scopeTable[i].end())
+        {
             return it->second;
         }
     }
     return "";
 }
 
-string IRVisitor::createTemp() {
+string IRVisitor::createTemp()
+{
     string tempName = "tmp" + to_string(tempCounter++);
     currentOffset -= 4;
     table[tempName] = {currentOffset, true, 0};
     return tempName;
 }
 
-string IRVisitor::gen_unique_id(antlr4::ParserRuleContext *ctx) {
+string IRVisitor::gen_unique_id(antlr4::ParserRuleContext *ctx)
+{
     return to_string(ctx->start->getLine()) + "_" + to_string(ctx->start->getCharPositionInLine());
 }
 
 IRVisitor::IRVisitor(SymbolTable &t, const FunctionTable &ft, int startoffset)
     : cfg(nullptr), current_bb(nullptr), bb_epilogue(nullptr), table(t), functionTable(ft), currentOffset(startoffset) {}
 
-antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx) {
-    for (auto fn : ctx->function_decl()) {
+antlrcpp::Any IRVisitor::visitProg(ifccParser::ProgContext *ctx)
+{
+    for (auto fn : ctx->function_decl())
+    {
         visit(fn);
     }
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ctx) {
+antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ctx)
+{
     string functionName = ctx->VAR()->getText();
     ReturnType retType = parseReturnType(ctx->type()->getText());
 
@@ -57,8 +66,10 @@ antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ct
     current_bb = bb_body;
     scopeTable.push_back(map<string, string>());
 
-    if (ctx->param_list() != nullptr) {
-        for (auto p : ctx->param_list()->param()) {
+    if (ctx->param_list() != nullptr)
+    {
+        for (auto p : ctx->param_list()->param())
+        {
             string originalName = p->VAR()->getText();
             string uniqueName = originalName + "_" + to_string(uniqueVarId++);
             scopeTable.back()[originalName] = uniqueName;
@@ -68,7 +79,8 @@ antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ct
 
     visit(ctx->block());
 
-    if (current_bb->exit_true == nullptr) {
+    if (current_bb->exit_true == nullptr)
+    {
         string dest = createTemp();
         current_bb->add_IRInstr(IRInstr::ldconst, {dest, "0"});
         current_bb->add_IRInstr(IRInstr::ret, {dest});
@@ -79,11 +91,14 @@ antlrcpp::Any IRVisitor::visitFunction_decl(ifccParser::Function_declContext *ct
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx) {
+antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx)
+{
     scopeTable.push_back(map<string, string>());
-    for (auto stmt : ctx->stmt()) {
+    for (auto stmt : ctx->stmt())
+    {
         visit(stmt);
-        if (current_bb->exit_true != nullptr) {
+        if (current_bb->exit_true != nullptr)
+        {
             break;
         }
     }
@@ -91,22 +106,27 @@ antlrcpp::Any IRVisitor::visitBlock(ifccParser::BlockContext *ctx) {
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx) {
-    for (auto elmtCtx : ctx->declare_elmt()) {
+antlrcpp::Any IRVisitor::visitDeclare_stmt(ifccParser::Declare_stmtContext *ctx)
+{
+    for (auto elmtCtx : ctx->declare_elmt())
+    {
         visit(elmtCtx);
     }
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx) {
-    if (ctx->VAR() != nullptr) {
+antlrcpp::Any IRVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx)
+{
+    if (ctx->VAR() != nullptr)
+    {
         string originalName = ctx->VAR()->getText();
         string uniqueName = originalName + "_" + to_string(uniqueVarId++);
         scopeTable.back()[originalName] = uniqueName;
         return 0;
     }
 
-    if (ctx->assign_stmt() != nullptr) {
+    if (ctx->assign_stmt() != nullptr)
+    {
         string originalName = ctx->assign_stmt()->VAR()->getText();
         string uniqueName = originalName + "_" + to_string(uniqueVarId++);
         scopeTable.back()[originalName] = uniqueName;
@@ -116,7 +136,8 @@ antlrcpp::Any IRVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *ctx)
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx)
+{
     string rightVar = std::any_cast<string>(visit(ctx->expr()));
     string originalName = ctx->VAR()->getText();
     string uniqueName = resolveVariable(originalName);
@@ -125,27 +146,36 @@ antlrcpp::Any IRVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ctx) {
     return uniqueName;
 }
 
-antlrcpp::Any IRVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
+{
     string rightVar = std::any_cast<string>(visit(ctx->expr()));
     string originalName = ctx->VAR()->getText();
     string uniqueName = resolveVariable(originalName);
     string op = ctx->OP->getText();
 
-    if (op == "=") {
+    if (op == "=")
+    {
         current_bb->add_IRInstr(IRInstr::copy, {uniqueName, rightVar});
-    } else {
+    }
+    else
+    {
         IRInstr::Operation irOp = IRInstr::add;
-        if (op == "+=") irOp = IRInstr::add;
-        else if (op == "-=") irOp = IRInstr::sub;
-        else if (op == "*=") irOp = IRInstr::mul;
-        else if (op == "/=") irOp = IRInstr::div;
+        if (op == "+=")
+            irOp = IRInstr::add;
+        else if (op == "-=")
+            irOp = IRInstr::sub;
+        else if (op == "*=")
+            irOp = IRInstr::mul;
+        else if (op == "/=")
+            irOp = IRInstr::div;
 
         current_bb->add_IRInstr(irOp, {uniqueName, uniqueName, rightVar});
     }
     return uniqueName;
 }
 
-antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
@@ -154,64 +184,82 @@ antlrcpp::Any IRVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx) {
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
     string op = ctx->OP->getText();
     IRInstr::Operation irOp = IRInstr::mul;
-    if (op == "*") irOp = IRInstr::mul;
-    else if (op == "/") irOp = IRInstr::div;
-    else if (op == "%") irOp = IRInstr::mod;
+    if (op == "*")
+        irOp = IRInstr::mul;
+    else if (op == "/")
+        irOp = IRInstr::div;
+    else if (op == "%")
+        irOp = IRInstr::mod;
     current_bb->add_IRInstr(irOp, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx)
+{
     string val;
-    if (ctx->INT()) val = ctx->INT()->getText();
-    else val = to_string((int)ctx->CHAR()->getText()[1]);
+    if (ctx->INT())
+        val = ctx->INT()->getText();
+    else
+        val = to_string((int)ctx->CHAR()->getText()[1]);
     string dest = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {dest, val});
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitVarExpr(ifccParser::VarExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitVarExpr(ifccParser::VarExprContext *ctx)
+{
     return resolveVariable(ctx->VAR()->getText());
 }
 
-antlrcpp::Any IRVisitor::visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprContext *ctx)
+{
     string uniqueName = resolveVariable(ctx->VAR()->getText());
     string one = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {one, "1"});
-    if (ctx->OP->getText() == "++") {
+    if (ctx->OP->getText() == "++")
+    {
         current_bb->add_IRInstr(IRInstr::add, {uniqueName, uniqueName, one});
-    } else {
+    }
+    else
+    {
         current_bb->add_IRInstr(IRInstr::sub, {uniqueName, uniqueName, one});
     }
     return uniqueName;
 }
 
-antlrcpp::Any IRVisitor::visitPostIncDecVarExpr(ifccParser::PostIncDecVarExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitPostIncDecVarExpr(ifccParser::PostIncDecVarExprContext *ctx)
+{
     string uniqueName = resolveVariable(ctx->VAR()->getText());
     string oldVal = createTemp();
     current_bb->add_IRInstr(IRInstr::copy, {oldVal, uniqueName});
 
     string one = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {one, "1"});
-    if (ctx->OP->getText() == "++") {
+    if (ctx->OP->getText() == "++")
+    {
         current_bb->add_IRInstr(IRInstr::add, {uniqueName, uniqueName, one});
-    } else {
+    }
+    else
+    {
         current_bb->add_IRInstr(IRInstr::sub, {uniqueName, uniqueName, one});
     }
     return oldVal;
 }
 
-antlrcpp::Any IRVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx)
+{
     return std::any_cast<string>(visit(ctx->expr()));
 }
 
-antlrcpp::Any IRVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx)
+{
     string expr = std::any_cast<string>(visit(ctx->expr()));
     string dest = createTemp();
     IRInstr::Operation irOp = (ctx->OP->getText() == "-") ? IRInstr::neg : IRInstr::not_;
@@ -219,21 +267,27 @@ antlrcpp::Any IRVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx) {
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
     string op = ctx->OP->getText();
     IRInstr::Operation irOp = IRInstr::cmp_lt;
-    if (op == "<") irOp = IRInstr::cmp_lt;
-    else if (op == "<=") irOp = IRInstr::cmp_le;
-    else if (op == ">") irOp = IRInstr::cmp_gt;
-    else if (op == ">=") irOp = IRInstr::cmp_ge;
+    if (op == "<")
+        irOp = IRInstr::cmp_lt;
+    else if (op == "<=")
+        irOp = IRInstr::cmp_le;
+    else if (op == ">")
+        irOp = IRInstr::cmp_gt;
+    else if (op == ">=")
+        irOp = IRInstr::cmp_ge;
     current_bb->add_IRInstr(irOp, {dest, left, right});
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
@@ -242,7 +296,8 @@ antlrcpp::Any IRVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx) {
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
@@ -250,7 +305,8 @@ antlrcpp::Any IRVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
@@ -258,7 +314,8 @@ antlrcpp::Any IRVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx)
+{
     string left = std::any_cast<string>(visit(ctx->expr(0)));
     string right = std::any_cast<string>(visit(ctx->expr(1)));
     string dest = createTemp();
@@ -266,7 +323,8 @@ antlrcpp::Any IRVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitCallExpr(ifccParser::CallExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitCallExpr(ifccParser::CallExprContext *ctx)
+{
     string funcName = ctx->VAR()->getText();
     vector<string> params;
     string dest = createTemp();
@@ -274,7 +332,8 @@ antlrcpp::Any IRVisitor::visitCallExpr(ifccParser::CallExprContext *ctx) {
     params.push_back(funcName);
     params.push_back(dest);
 
-    for (auto argCtx : ctx->expr()) {
+    for (auto argCtx : ctx->expr())
+    {
         string argVar = std::any_cast<string>(visit(argCtx));
         params.push_back(argVar);
     }
@@ -283,7 +342,8 @@ antlrcpp::Any IRVisitor::visitCallExpr(ifccParser::CallExprContext *ctx) {
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx)
+{
     string dest = createTemp();
     string zero = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {zero, "0"});
@@ -315,7 +375,8 @@ antlrcpp::Any IRVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx)
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx) {
+antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx)
+{
     string dest = createTemp();
     string zero = createTemp();
     current_bb->add_IRInstr(IRInstr::ldconst, {zero, "0"});
@@ -347,11 +408,15 @@ antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx) {
     return dest;
 }
 
-antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx)
+{
     string expr;
-    if (ctx->expr() != nullptr) {
+    if (ctx->expr() != nullptr)
+    {
         expr = std::any_cast<string>(visit(ctx->expr()));
-    } else {
+    }
+    else
+    {
         expr = createTemp();
         current_bb->add_IRInstr(IRInstr::ldconst, {expr, "0"});
     }
@@ -360,7 +425,8 @@ antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx) {
     return expr;
 }
 
-antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx)
+{
     BasicBlock *bb_cond = new BasicBlock(cfg, "if_cond" + gen_unique_id(ctx));
     BasicBlock *bb_then = new BasicBlock(cfg, "if_then" + gen_unique_id(ctx));
     BasicBlock *bb_end = new BasicBlock(cfg, "if_end" + gen_unique_id(ctx));
@@ -370,23 +436,29 @@ antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx) {
     current_bb = bb_cond;
     current_bb->test_var_name = std::any_cast<string>(visit(ctx->expr()));
 
-    if (ctx->stmt().size() > 1) {
+    if (ctx->stmt().size() > 1)
+    {
         bb_else = new BasicBlock(cfg, "if_else" + gen_unique_id(ctx));
         current_bb->add_exit(bb_then, bb_else);
-    } else {
+    }
+    else
+    {
         current_bb->add_exit(bb_then, bb_end);
     }
 
     current_bb = bb_then;
     visit(ctx->stmt(0));
-    if (current_bb->exit_true == nullptr) {
+    if (current_bb->exit_true == nullptr)
+    {
         current_bb->add_exit(bb_end);
     }
 
-    if (ctx->stmt().size() > 1) {
+    if (ctx->stmt().size() > 1)
+    {
         current_bb = bb_else;
         visit(ctx->stmt(1));
-        if (current_bb->exit_true == nullptr) {
+        if (current_bb->exit_true == nullptr)
+        {
             current_bb->add_exit(bb_end);
         }
     }
@@ -395,7 +467,8 @@ antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx) {
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx)
+{
     BasicBlock *bb_cond = new BasicBlock(cfg, "while_cond" + gen_unique_id(ctx));
     BasicBlock *bb_body = new BasicBlock(cfg, "while_body" + gen_unique_id(ctx));
     BasicBlock *bb_end = new BasicBlock(cfg, "while_end" + gen_unique_id(ctx));
@@ -410,7 +483,8 @@ antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx) {
 
     current_bb = bb_body;
     visit(ctx->stmt());
-    if (current_bb->exit_true == nullptr) {
+    if (current_bb->exit_true == nullptr)
+    {
         current_bb->add_exit(bb_cond);
     }
 
@@ -421,40 +495,53 @@ antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx) {
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx)
+{
     (void)ctx;
-    if (!breakTargets.empty()) {
+    if (!breakTargets.empty())
+    {
         current_bb->add_exit(breakTargets.back());
     }
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext *ctx)
+{
     (void)ctx;
-    if (!continueTargets.empty()) {
+    if (!continueTargets.empty())
+    {
         current_bb->add_exit(continueTargets.back());
     }
     return 0;
 }
 
-antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
+antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
+{
     string switchVal = std::any_cast<string>(visit(ctx->expr()));
     BasicBlock *bb_end = new BasicBlock(cfg, "switch_end" + gen_unique_id(ctx));
 
     vector<pair<int, BasicBlock *>> caseBlocks;
     BasicBlock *defaultBlock = nullptr;
-    for (auto part : ctx->switch_part()) {
-        if (part->case_label() != nullptr) {
+    for (auto part : ctx->switch_part())
+    {
+        if (part->case_label() != nullptr)
+        {
             int cval = 0;
             auto c = part->case_label();
-            if (c->INT() != nullptr) {
+            if (c->INT() != nullptr)
+            {
                 cval = stoi(c->INT()->getText());
-            } else if (c->CHAR() != nullptr) {
+            }
+            else if (c->CHAR() != nullptr)
+            {
                 cval = (int)c->CHAR()->getText()[1];
             }
             caseBlocks.push_back({cval, new BasicBlock(cfg, "switch_case" + gen_unique_id(part))});
-        } else if (part->default_label() != nullptr) {
-            if (defaultBlock == nullptr) {
+        }
+        else if (part->default_label() != nullptr)
+        {
+            if (defaultBlock == nullptr)
+            {
                 defaultBlock = new BasicBlock(cfg, "switch_default" + gen_unique_id(part));
             }
         }
@@ -464,7 +551,8 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
     current_bb->add_exit(firstDispatch);
 
     BasicBlock *dispatch = firstDispatch;
-    for (size_t i = 0; i < caseBlocks.size(); i++) {
+    for (size_t i = 0; i < caseBlocks.size(); i++)
+    {
         string cst = createTemp();
         dispatch->add_IRInstr(IRInstr::ldconst, {cst, to_string(caseBlocks[i].first)});
         string cond = createTemp();
@@ -472,15 +560,19 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
         dispatch->test_var_name = cond;
 
         BasicBlock *nextDispatch = nullptr;
-        if (i + 1 < caseBlocks.size()) {
+        if (i + 1 < caseBlocks.size())
+        {
             nextDispatch = new BasicBlock(cfg, "switch_dispatch" + gen_unique_id(ctx) + "_" + to_string(i + 1));
-        } else {
+        }
+        else
+        {
             nextDispatch = (defaultBlock != nullptr) ? defaultBlock : bb_end;
         }
         dispatch->add_exit(caseBlocks[i].second, nextDispatch);
         dispatch = nextDispatch;
     }
-    if (caseBlocks.empty()) {
+    if (caseBlocks.empty())
+    {
         firstDispatch->add_exit((defaultBlock != nullptr) ? defaultBlock : bb_end);
     }
 
@@ -489,10 +581,13 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
     BasicBlock *currentCase = nullptr;
     size_t caseIdx = 0;
     bool hasActiveLabel = false;
-    for (auto part : ctx->switch_part()) {
-        if (part->case_label() != nullptr) {
+    for (auto part : ctx->switch_part())
+    {
+        if (part->case_label() != nullptr)
+        {
             BasicBlock *labelBlock = caseBlocks[caseIdx++].second;
-            if (hasActiveLabel && current_bb->exit_true == nullptr && current_bb != labelBlock) {
+            if (hasActiveLabel && current_bb->exit_true == nullptr && current_bb != labelBlock)
+            {
                 current_bb->add_exit(labelBlock);
             }
             current_bb = labelBlock;
@@ -500,11 +595,14 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
             hasActiveLabel = true;
             continue;
         }
-        if (part->default_label() != nullptr) {
-            if (defaultBlock == nullptr) {
+        if (part->default_label() != nullptr)
+        {
+            if (defaultBlock == nullptr)
+            {
                 defaultBlock = new BasicBlock(cfg, "switch_default_fallback" + gen_unique_id(part));
             }
-            if (hasActiveLabel && current_bb->exit_true == nullptr && current_bb != defaultBlock) {
+            if (hasActiveLabel && current_bb->exit_true == nullptr && current_bb != defaultBlock)
+            {
                 current_bb->add_exit(defaultBlock);
             }
             current_bb = defaultBlock;
@@ -513,16 +611,19 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx) {
             continue;
         }
 
-        if (!hasActiveLabel) {
+        if (!hasActiveLabel)
+        {
             continue;
         }
-        if (currentCase != nullptr && current_bb->exit_true != nullptr) {
+        if (currentCase != nullptr && current_bb->exit_true != nullptr)
+        {
             continue;
         }
         visit(part->stmt());
     }
 
-    if (hasActiveLabel && current_bb->exit_true == nullptr) {
+    if (hasActiveLabel && current_bb->exit_true == nullptr)
+    {
         current_bb->add_exit(bb_end);
     }
 

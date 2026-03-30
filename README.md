@@ -17,7 +17,7 @@ Pour une vue détaillée de l'architecture, des passes internes et du pseudo-cod
 
 ### 1.2 Fichiers à inclure
 
-Avant de démarrer il faut préparer quelques fichiers qui ne sont pas dans ce repo:
+Avant de démarrer, il faut préparer quelques fichiers qui ne sont pas dans ce dépôt:
 
 - copier un modèle de configuration dans `compiler/config.mk` (par exemple `config-wsl-2025.mk` ou `config-IF501.mk`) et ajuster `ANTLRJAR`, `ANTLRINC` et `ANTLRLIB` à votre machine
 - récupérer le script de tests `ifcc-test.py` et le placer à la racine du dépôt
@@ -44,7 +44,8 @@ int main() {
 ```
 
 Contraintes actuelles:
-- paramètres types `int` uniquement
+
+- paramètres de type `int` uniquement
 - type de retour de fonction: `int` ou `void`
 - présence obligatoire d'une fonction `main`
 - appels de fonctions supportés (avec contrôle d'arité)
@@ -76,7 +77,7 @@ Les expressions suivantes sont parsées et générées:
 - arithmétique `+`, `-`
 - comparaisons: `>`, `<`, `>=`, `<=`
 - égalité: `==`, `!=`
-- bit-a-bit: `&`, `^`, `|`
+- bit-à-bit: `&`, `^`, `|`
 - logiques paresseuses: `&&`, `||`
 - appels de fonctions dans les expressions (fonctions retournant `int`)
 
@@ -92,13 +93,13 @@ La grammaire ignore:
 
 ### 2.5 Non supporté dans cette version
 
-Les elements facultatifs suivants ont été volontairement non traité dans le scope actuel:
+Les éléments facultatifs suivants ont été volontairement non traités dans le scope actuel:
 
-- `double` et conversions implicites associees
+- `double` et conversions implicites associées
 - propagation de constantes (simple ou data-flow)
 - tableaux 1D
 - pointeurs
-- chaines de caractères representees par des tableaux de `char`
+- chaînes de caractères représentées par des tableaux de `char`
 - métadonnées internes legacy liées aux pointeurs/tableaux (supprimées des structures)
 
 Nous avons également décidé de ne pas traiter les fonctionnalités non prioritaires et déconseillées.
@@ -110,10 +111,10 @@ Le visiteur `SymbolVisitor` construit une table des symboles (`SymbolTable`) et 
 - erreur si une variable est déclarée plusieurs fois dans un même bloc
 - erreur si une variable est utilisée sans déclaration
 - erreur si une affectation vise une variable non déclarée
-- erreur si une fonction est definie plusieurs fois
+- erreur si une fonction est définie plusieurs fois
 - erreur si la fonction `main` est absente
-- erreur si un paramêtre de fonction est dupliqué
-- erreur si appel d'une fonction non definie
+- erreur si un paramètre de fonction est dupliqué
+- erreur si appel d'une fonction non définie
 - erreur si nombre d'arguments incohérent avec la signature
 - erreur si une fonction `void` est utilisée dans une expression
 - erreur si `return;` dans une fonction `int`
@@ -127,14 +128,14 @@ Le visiteur `SymbolVisitor` construit une table des symboles (`SymbolTable`) et 
 
 Notes:
 
-- la detection de division par zero ne couvre pas tous les cas dynamiques (exemple : (0) et variable qui vaut 0 n'est pas traité)
-- les warnings (variable non utilisée, division/modulo par zero constant) ne bloquent pas la compilation
+- la détection de division par zéro ne couvre pas tous les cas dynamiques (exemple: `(0)` et variable qui vaut 0 ne sont pas traités)
+- les warnings (variable non utilisée, division/modulo par zéro constant) ne bloquent pas la compilation
 
 ## 4. Génération de code
 
 ### 4.1 Architecture
 
-La generation repose sur une hiérarchie de backend:
+La génération repose sur une hiérarchie de backend:
 
 - `backend` (abstrait)
 - `x86Backend` (x86-64, AT&T)
@@ -147,13 +148,13 @@ ifcc -target x86   # génère du code x86-64
 ifcc -target arm   # génère du code AArch64
 ```
 
-Sans specification de `-target`, la cible par défaut est x86.
+Sans spécification de `-target`, la cible par défaut est x86.
 
 Le backend gère plusieurs fonctions dans un même programme:
 
-- un CFG est génère par fonction
-- les labels assembleur internes sont prefixes par fonction (évite les collisions)
-- les paramètres sont recuperes depuis les registres d'appel
+- un CFG est généré par fonction
+- les labels assembleur internes sont préfixés par fonction (évite les collisions)
+- les paramètres sont récupérés depuis les registres d'appel
 - la pile locale x86 est réservée explicitement (frame) pour supporter appels imbriqués et récursion
 
 ## 5. Structure du projet
@@ -165,7 +166,7 @@ compiler/
   src/SymbolTable.h    # symboles variables + signatures de fonctions
   src/SymbolVisitor.*  # vérifications sémantiques
   src/IRVisitor.*      # AST -> IR/CFG
-  src/backend.*        # generation assembleur x86-64 / AArch64
+  src/backend.*        # génération assembleur x86-64 / AArch64
   Makefile             # build ANTLR + C++
   config*.mk           # config machine (ANTLR jar/runtime)
 
@@ -228,23 +229,23 @@ Le dossier `testfiles/` contient des cas organisés par catégories d'opérateur
 
 ### 7.1 Structure des tests
 
-Chaque categorie (ex: `add/`, `comparison/`, etc.) contient en general trois sous-dossiers:
+Chaque catégorie (ex: `add/`, `comparison/`, etc.) contient en général trois sous-dossiers:
 
-- `valid/`: programmes C valides qui doivent être compiles et executes correctement par ifcc
-- `invalid/`: programmes C invalides qui doivent être rejetes par ifcc avec une erreur appropriee
-- `not_implémentéd/`: programmes en attente d'implémentation ou en cours de développément
+- `valid/`: programmes C valides qui doivent être compilés et exécutés correctement par ifcc
+- `invalid/`: programmes C invalides qui doivent être rejetés par ifcc avec une erreur appropriée
+- `not_implemented/`: programmes en attente d'implémentation ou en cours de développement
 
-### 7.2 Workflow de développément des tests
+### 7.2 Workflow de développement des tests
 
-Les nouveaux tests sont initialement places dans `not_implémentéd/` d'une categorie. Une fois l'implémentation terminée et le comportement valide, le test est déplacé vers `valid/` ou `invalid/`.
+Pour toute nouvelle fonctionnalité, on crée systématiquement un dossier `not_implemented/` dans la catégorie concernée. Les tests y sont ajoutés tant que la fonctionnalité n'est pas stable. Une fois les tests au vert, ce dossier `not_implemented/` est supprimé et les tests sont déplacés vers `valid/` ou `invalid/`.
 
 Couverture actuelle (sélection):
 
-- programmes valides: constantes, variables, priorités, parenthèses, chaines d'operations
+- programmes valides: constantes, variables, priorités, parenthèses, chaînes d'opérations
 - opérateurs testés: `+ - * / %`, bitwise, comparaisons, égalité, logiques paresseux
 - déclarations multiples avec assignment sur la même ligne (`declare-multiple-assign`)
 - structures de contrôle: `if`, `if/else`, `while`, `switch`
-- appels de fonctions (definition, arité, paramètres)
+- appels de fonctions (définition, arité, paramètres)
 - récursion (factorielle, fibonacci, récursion mutuelle)
 - cas invalides syntaxiques: opérateurs incomplets, point-virgule manquant, tokens invalides
 - cas invalides sémantiques: variable non déclarée, variable redéclarée, appel fonction inconnue, arité incorrecte, incohérences `return`
@@ -253,7 +254,7 @@ Couverture actuelle (sélection):
 
 Deux méthodes principales sont disponibles:
 
-1) Wrapper `testing_wrapper.py`
+1. Wrapper `testing_wrapper.py`
 
 Dans le répertoire `compiler`, lancer:
 
@@ -261,9 +262,9 @@ Dans le répertoire `compiler`, lancer:
 make tests
 ```
 
-2) Script `ifcc-test.py`
+2. Script `ifcc-test.py`
 
-Le script (fourni par les professeurs, placé à la racine, non versionné) peut être invoqué directement:
+Le script (fourni par les professeurs et qui doit être placé à la racine) peut être invoqué directement:
 
 ```bash
 python3 ifcc-test.py testfiles
@@ -271,6 +272,16 @@ python3 ifcc-test.py testfiles/logic
 ```
 
 Astuce: pour cibler un seul fichier, passer son chemin en argument.
+
+### 7.4 Environnement Windows
+
+Le workflow de build/tests est prévu pour un environnement POSIX (Linux/macOS). Sous Windows, utiliser de préférence WSL pour exécuter les commandes `make`, `python3` et `gcc`.
+
+Recommandation pratique:
+
+- ouvrir le dépôt depuis WSL
+- lancer `make` et `make tests` dans `compiler/`
+- exécuter `python3 ifcc-test.py testfiles` depuis la racine du projet
 
 ## 8. Répartition des tâches
 
@@ -280,14 +291,14 @@ Pour voir la répartition des tâches et l'avancement du projet, consulter le do
 
 ### 9.1 `getchar()` / `putchar()`
 
-Dans le cas des tests de la fonction getchar() nous ne pouvons pas inclure dans les testfiles des tests qui attendent un char indefiniement. Nous les avons cependant testés en apparté et en entrant une valeur nous même, les tests rendent des resultats valides. Exemple de test qui rentre dans ce cas la :
+Dans le cas des tests de la fonction `getchar()`, nous ne pouvons pas inclure dans les testfiles des tests qui attendent un caractère indéfiniment. Nous les avons cependant testés à part, et en entrant une valeur nous-mêmes, les tests rendent des résultats valides. Exemple de test qui rentre dans ce cas-là:
 int main() { int x; x = getchar(); return x; }
 
-De plus le comportement peut varier selon l'environnement (WSL, Linux natif, macOS/clang). Sous notre version de gcc (clang) sous mac putchar n'existe pas, gcc le considere comme un programme invalide alors que ce n'est pas le cas.
+De plus, le comportement peut varier selon l'environnement (WSL, Linux natif, macOS/clang). Sous notre version de gcc (clang) sous mac, putchar n'existe pas, gcc le considère comme un programme invalide alors que ce n'est pas le cas.
 
 ### 9.2 Dossier `testfiles/undefined`
 
-Ces programmes ont un comportement C non defini. Il est normal d'observer des divergences entre ifcc et gcc/clang selon plate-forme et version de compilateur.
+Ces programmes ont un comportement C non défini. Il est normal d'observer des divergences entre ifcc et gcc/clang selon la plate-forme et la version du compilateur. Les résultats ne sont donc pas utilisés comme oracle strict.
 
 ### 9.3 Tests échoués sur macOS
 

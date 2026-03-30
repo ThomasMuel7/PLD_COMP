@@ -7,7 +7,8 @@
 #include "BasicBlock.h"
 #include "CFG.h"
 
-class IRVisitor : public ifccBaseVisitor {
+class IRVisitor : public ifccBaseVisitor
+{
 private:
     std::vector<CFG *> cfgs;
     CFG *cfg;
@@ -22,7 +23,7 @@ private:
     std::vector<BasicBlock *> breakTargets;
     std::vector<BasicBlock *> continueTargets;
 
-    std::string resolveVariable(const std::string& originalName);
+    std::string resolveVariable(const std::string &originalName);
     std::string gen_unique_id(antlr4::ParserRuleContext *ctx);
 
 public:
