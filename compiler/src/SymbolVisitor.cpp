@@ -7,8 +7,6 @@
 #include <string>
 
 using namespace std;
-const int TYPE_INT = 0;
-const int TYPE_INVALID = 1;
 
 SymbolVisitor::SymbolVisitor()
 {
@@ -187,7 +185,7 @@ antlrcpp::Any SymbolVisitor::visitDeclare_elmt(ifccParser::Declare_elmtContext *
         registerVariable(originalName, ctx->start->getLine());
         if (!hasError)
         {
-            return visit(ctx->assign_stmt());
+            visit(ctx->assign_stmt());
         }
     }
     return 0;
@@ -203,11 +201,11 @@ antlrcpp::Any SymbolVisitor::visitAssign_stmt(ifccParser::Assign_stmtContext *ct
     {
         cerr << "Erreur: tentative d'assignation sur la variable non declaree '" << originalName << "'." << endl;
         hasError = true;
-        return TYPE_INVALID;
+        return 0;
     }
 
     table[uniqueName].isUsed = true;
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx)
@@ -236,16 +234,6 @@ antlrcpp::Any SymbolVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ct
     return 0;
 }
 
-antlrcpp::Any SymbolVisitor::visitParensExpr(ifccParser::ParensExprContext *ctx)
-{
-    return std::any_cast<int>(visit(ctx->expr()));
-}
-
-antlrcpp::Any SymbolVisitor::visitConstExpr(ifccParser::ConstExprContext *ctx)
-{
-    return TYPE_INT;
-}
-
 antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx)
 {
     string originalName = ctx->VAR()->getText();
@@ -254,10 +242,10 @@ antlrcpp::Any SymbolVisitor::visitVarExpr(ifccParser::VarExprContext *ctx)
     {
         cerr << "Erreur: la variable '" << originalName << "' utilisee dans l'expression n'est pas declaree." << endl;
         hasError = true;
-        return TYPE_INVALID;
+        return 0;
     }
     table[uniqueName].isUsed = true;
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
@@ -269,10 +257,10 @@ antlrcpp::Any SymbolVisitor::visitAssignExpr(ifccParser::AssignExprContext *ctx)
     {
         cerr << "Erreur: tentative d'assignation sur la variable non declaree '" << originalName << "'." << endl;
         hasError = true;
-        return TYPE_INVALID;
+        return 0;
     }
     table[uniqueName].isUsed = true;
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprContext *ctx)
@@ -289,7 +277,7 @@ antlrcpp::Any SymbolVisitor::visitMultDivModExpr(ifccParser::MultDivModExprConte
             cerr << "Warning: division ou modulo par zero." << endl;
         }
     }
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprContext *ctx)
@@ -301,11 +289,9 @@ antlrcpp::Any SymbolVisitor::visitPreIncDecVarExpr(ifccParser::PreIncDecVarExprC
         cerr << "Erreur: la variable '" << originalName << "' n'est pas declaree pour '"
              << ctx->OP->getText() << "'." << endl;
         hasError = true;
-        return TYPE_INVALID;
     }
-
     table[uniqueName].isUsed = true;
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitPostIncDecVarExpr(ifccParser::PostIncDecVarExprContext *ctx)
@@ -317,73 +303,9 @@ antlrcpp::Any SymbolVisitor::visitPostIncDecVarExpr(ifccParser::PostIncDecVarExp
         cerr << "Erreur: la variable '" << originalName << "' n'est pas declaree pour '"
              << ctx->OP->getText() << "'." << endl;
         hasError = true;
-        return TYPE_INVALID;
     }
-
     table[uniqueName].isUsed = true;
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitUnitaryExpr(ifccParser::UnitaryExprContext *ctx)
-{
-    visit(ctx->expr());
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitAddSubExpr(ifccParser::AddSubExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitCompareExpr(ifccParser::CompareExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitEqualExpr(ifccParser::EqualExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitLogicBitANDExpr(ifccParser::LogicBitANDExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitLogicBitXORExpr(ifccParser::LogicBitXORExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitLogicBitORExpr(ifccParser::LogicBitORExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
-}
-
-antlrcpp::Any SymbolVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx)
-{
-    visit(ctx->expr(0));
-    visit(ctx->expr(1));
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitCallExpr(ifccParser::CallExprContext *ctx)
@@ -441,7 +363,7 @@ antlrcpp::Any SymbolVisitor::visitCallExpr(ifccParser::CallExprContext *ctx)
         visit(argCtx);
     }
 
-    return TYPE_INT;
+    return 0;
 }
 
 antlrcpp::Any SymbolVisitor::visitBreak_stmt(ifccParser::Break_stmtContext *ctx)

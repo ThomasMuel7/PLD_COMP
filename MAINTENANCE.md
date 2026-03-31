@@ -7,11 +7,47 @@ Objectif principal:
 
 - expliquer clairement le rôle de chaque module
 - expliciter les variables d'état importantes
-- donner un pseudo-code pour chaque fonction clé des passes sémantique et IR
+- donner un pseudo-code pour chaque fonction clé redéfinie des passes sémantique et IR
+
+## Table des matières
+
+- [1. Vue d'ensemble du compilateur](#1-vue-densemble-du-compilateur)
+- [2. Langage supporté (scope officiel)](#2-langage-supporté-scope-officiel)
+  - [2.1 Types et fonctions](#21-types-et-fonctions)
+  - [2.2 Déclarations](#22-déclarations)
+  - [2.3 Expressions supportées](#23-expressions-supportées)
+  - [2.4 Contrôle de flux supporté](#24-contrôle-de-flux-supporté)
+  - [2.5 Features explicitement non supportées](#25-features-explicitement-non-supportées)
+- [3. Structures de données](#3-structures-de-données)
+  - [3.1 VariableInfo](#31-variableinfo)
+  - [3.2 FunctionInfo](#32-functioninfo)
+  - [3.3 ScopeTable](#33-scopetable)
+  - [3.4 SymbolTable](#34-symboltable)
+  - [3.5 FunctionTable](#35-functiontable)
+- [4. SymbolVisitor: specification détaillée](#4-symbolvisitor-specification-détaillée)
+  - [4.1 Variables d'état (membres)](#41-variables-détat-membres)
+  - [4.2 Helpers](#42-helpers)
+  - [4.3 Fonctions visitées, une par une](#43-fonctions-visitées-une-par-une)
+- [5. IRVisitor: specification détaillée](#5-irvisitor-specification-détaillée)
+  - [5.1 Variables d'état (membres)](#51-variables-détat-membres)
+  - [5.2 Helpers](#52-helpers-1)
+  - [5.3 Fonctions visitées, une par une](#53-fonctions-visitées-une-par-une)
+- [6. Backend et conséquences du mode int-only](#6-backend-et-conséquences-du-mode-int-only)
+- [7. Tests et exécution](#7-tests-et-exécution)
+  - [7.1 Build](#71-build)
+  - [7.2 Régression recommandée](#72-régression-recommandée)
+- [8. Règles d'évolution (ordre obligatoire)](#8-règles-dévolution-ordre-obligatoire)
+- [9. Exemple fil-rouge (du source au CFG)](#9-exemple-fil-rouge-du-source-au-cfg)
+  - [9.1 Parsing (ANTLR)](#91-parsing-antlr)
+  - [9.2 Passe sémantique (SymbolVisitor)](#92-passe-sémantique-symbolvisitor)
+  - [9.3 Passe IR (IRVisitor)](#93-passe-ir-irvisitor)
+  - [9.4 Lexique IR](#94-lexique-ir)
+  - [9.5 Visualisation des CFG](#95-visualisation-des-cfg)
+  - [9.6 Résultat](#96-résultat)
 
 ---
 
-## 1) Vue d'ensemble du compilateur
+## 1. Vue d'ensemble du compilateur
 
 Le compilateur suit 4 étapes strictes.
 
@@ -45,7 +81,7 @@ Point d'entrée runtime du compilateur:
 
 ---
 
-## 2) Langage supporté (scope officiel)
+## 2. Langage supporté (scope officiel)
 
 ### 2.1 Types et fonctions
 
@@ -82,20 +118,20 @@ Point d'entrée runtime du compilateur:
 - `break`, `continue`
 - `return`
 
-### 2.5 Features explicitement non supportées (parmi les facultatifs)
+### 2.5 Features explicitement non supportées
 
 - pointeurs (`*`, `&`)
 - tableaux (`a[i]`, déclaration tableau)
 - doubles
 - propagation de constantes
 
-De plus, ous avons décidé de ne pas implémenter les fonctionnalités non prioritaires et déconseillées.
+Nous avons décidé de ne pas implémenter les fonctionnalités non prioritaires et déconseillées.
 
 ---
 
-## 3) Structures de données
+## 3. Structures de données
 
-### 3.1 VariableInfo (`compiler/src/SymbolTable.h`)
+### 3.1 VariableInfo
 
 ```text
 name        : nom source (pour messages warning/erreur)
@@ -106,9 +142,9 @@ declLine    : ligne de déclaration (pour warning unused)
 
 Utilité pratique:
 
-- `name` conserve le nom original de la variable pour les diagnostics
-- `index` sert au placement stack
-- `isUsed` + `declLine` servent au warning de fin d'analyse
+- name conserve le nom original de la variable pour les diagnostics
+- index sert au placement stack
+- isUsed + declLine servent au warning de fin d'analyse
 
 ### 3.2 FunctionInfo
 
@@ -118,74 +154,55 @@ arity            : nombre de paramètres
 paramUniqueNames : noms internes scopes des paramètres
 ```
 
-Utilite pratique:
+Utilité pratique:
 
 - verification d'appels (existence + arité)
 - mapping cohérent entre front-end sémantique et IR/backend
 
 ### 3.3 ScopeTable
 
-Définition logique:
-`ScopeTable = vector<map<nom_source, nom_unique>>`
+Définition logique: `ScopeTable = vector<map<nom_source, nom_unique>>`
 
-Utilite pratique:
+Utilité pratique:
 
 - gère le masquage de variables (shadowing)
 - permet une résolution de nom O(nombre_de_scopes)
 
-Pseudo-code de résolution:
+### 3.4 SymbolTable
 
-```text
-resolve(name):
-  pour i de dernier_scope à premier_scope:
-    si name existe dans scope[i]:
-      retourner scope[i][name]
-  retourner not_found
-```
+Définition logique: `SymbolTable = std::map<std::string, VariableInfo>`
 
----
+Utilité pratique:
 
-## 4) SymbolVisitor: specification détaillée
+- C'est le dictionnaire global et "aplati" de toutes les variables du programme (et des temporaires de l'IR).
+- La clé est le nom unique de la variable (ex: a_0, x_2, tmp1), ce qui évite toute collision liée aux blocs lexicaux.
+- Elle est partagée entre le SymbolVisitor (qui la remplit avec les variables sources) et l'IRVisitor (qui s'en sert pour allouer les temporaires et transmettre les offsets corrects au backend).
+
+### 3.5 FunctionTable
+
+Définition logique: `FunctionTable = std::map<std::string, FunctionInfo>`
+
+Utilité pratique:
+
+- C'est le dictionnaire de toutes les fonctions déclarées dans le programme.
+- La clé est le nom original de la fonction (ex: add, main).
+- Permet au visiteur sémantique de valider les appels de fonctions (CallExpr) : vérification de l'existence de la fonction, correspondance du nombre d'arguments (arité) et respect du type de retour (void vs int).
+- Garantit qu'il n'y a pas de redéfinition d'une même fonction et qu'un main est bien présent.
+
+## 4. SymbolVisitor: spécification détaillée
 
 `SymbolVisitor` est la passe de cohérence sémantique.
-Chaque visiteur d'expression retourne un type logique interne:
+Puisque notre langage cible ne supporte que des entiers (int), nous n'avons pas besoin d'un système de typage complexe renvoyant les types évalués de chaque nœud.
 
-- `TYPE_INT`
-- `TYPE_INVALID`
+Le visiteur s'appuie sur le booléen global `hasError` :
 
-Signification:
+- Dès qu'une erreur sémantique est rencontrée (variable non déclarée, appel de fonction inconnu, etc.), on affiche l'erreur et on passe hasError à true.
 
-- `TYPE_INT`: expression semantiquement valide qui produit un entier utilisable (dans une affectation, un calcul, une condition, etc.).
-- `TYPE_INVALID`: expression invalide apres detection d'erreur semantique (variable non declaree, appel incorrect, types incompatibles, ...). Cette valeur permet de continuer l'analyse sans planter et d'eviter les erreurs en cascade.
+Le visiteur continue son exécution jusqu'à la fin de l'arbre pour remonter un maximum d'erreurs en une seule passe, évitant ainsi un arrêt brutal à la première faute.
 
-Pourquoi c'est nécessaire :
+Les méthodes renvoient toutes 0.
 
-Problèmes evités:
-
-1. Crash ou erreur de conversion type `Any`
-
-- Si une visite retourne une valeur inattendue, la conversion peut échouer.
-- La fonction de garde attrape ça et force un état invalide au lieu de casser l'analyse (fallback `TYPE_INVALID`).
-
-2. Cascade de messages d'erreurs inutiles
-
-- Quand une sous-expression est déja mauvaise, on la marque `TYPE_INVALID`.
-- Les parents n'ajoutent pas de faux messages "type incompatible" sur la même cause racine.
-
-2. Analyse qui continue jusqu'au bout du fichier
-
-- Meme apres une erreur locale, le visiteur continue à vérifier retours, conditions, appels, etc.
-- On remonte ainsi plusieurs vraies erreurs en un seul run.
-
-3. Convention homogene de retour pour les expressions
-
-- Sans le couple `TYPE_INT` / `TYPE_INVALID`, il faudrait des cas spéciaux partout.
-- Avec ce schéma, toutes les visites (unaires, binaires, appels, conditions) suivent la même règle.
-
-Version très simple a retenir:
-
-- `TYPE_INT` = expression correcte
-- `TYPE_INVALID` = expression déjà en erreur, on continue sans polluer les diagnostics
+Pour les expressions simples (constantes, opérations arithmétiques binaires, unaires, parenthèses) qui ne nécessitent pas de validation des opérandes autres que la descente récursive, nous utilisons l'implémentation par défaut générée par ANTLR (ifccBaseVisitor) qui visite automatiquement les nœuds enfants.
 
 ### 4.1 Variables d'état (membres)
 
@@ -206,11 +223,7 @@ switchDepth               : profondeur switch
 
 #### `resolveVariable(originalName)`
 
-Responsabilité:
-
-- trouver le nom interne visible depuis le scope courant.
-
-Pseudo-code:
+Responsabilité: trouver le nom interne visible depuis le scope courant.
 
 ```text
 resolveVariable(name):
@@ -222,13 +235,9 @@ resolveVariable(name):
 
 #### `lookupVariableInfo(originalName)`
 
-Responsabilité:
+Responsabilité: obtenir `VariableInfo*` en partant d'un nom source.
 
-- obtenir `VariableInfo*` en partant d'un nom source.
-
-Pseudo-code:
-
-```text
+```
 lookupVariableInfo(name):
   unique = resolveVariable(name)
   si unique == "": retourner null
@@ -238,11 +247,7 @@ lookupVariableInfo(name):
 
 #### `checkUnusedVariables()`
 
-Responsabilité:
-
-- émettre les warnings `unused` en fin de passe.
-
-Pseudo-code:
+Responsabilité: émettre les warnings unused en fin de passe.
 
 ```text
 checkUnusedVariables():
@@ -253,17 +258,26 @@ checkUnusedVariables():
 
 ### 4.3 Fonctions visitées, une par une
 
+**Navigation rapide :**
+
+- [`visitProg`](#visitprog)
+- [`visitFunction_decl`](#visitfunction_decl)
+- [`visitBlock`](#visitblock)
+- [`visitDeclare_elmt`](#visitdeclare_elmt)
+- [`visitAssign_stmt`](#visitassign_stmt)
+- [`visitReturn_stmt`](#visitreturn_stmt)
+- [`visitVarExpr`](#visitvarexpr)
+- [`visitAssignExpr`](#visitassignexpr)
+- [`visitMultDivModExpr`](#visitmultdivmodexpr)
+- [`visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`](#visitpreincdecvarepr-visitpostincdecvarepr)
+- [`visitCallExpr`](#visitcallexpr)
+- [`visitBreak_stmt`, `visitContinue_stmt`](#visitbreak_stmt-visitcontinue_stmt)
+- [`visitWhile_stmt`](#visitwhile_stmt)
+- [`visitSwitch_stmt`](#visitswitch_stmt)
+
 #### `visitProg`
 
-Responsabilité:
-
-- prédéclarer toutes les signatures de fonction
-- détectér doublons
-- imposer présence de `main`
-- visiter ensuite chaque fonction
-- lancer le scan `unused`
-
-Pseudo-code:
+Responsabilité: prédéclarer toutes les signatures, vérifier doubles, forcer la présence de main.
 
 ```text
 visitProg(ctx):
@@ -273,24 +287,19 @@ visitProg(ctx):
     sinon:
       functionTable[fn.nom] = {returnType, arity, [], []}
 
-  si main absente:
+  si main absent:
     erreur
 
   pour fn dans programme:
     visit(fn)
 
   checkUnusedVariables()
+  return 0
 ```
 
 #### `visitFunction_decl`
 
-Responsabilité:
-
-- initialiser le contexte fonction
-- créer le scope des paramètres
-- allouer les paramètres en locals internes
-
-Pseudo-code:
+Responsabilité: initialiser le contexte fonction et allouer les paramètres.
 
 ```text
 visitFunction_decl(ctx):
@@ -309,21 +318,18 @@ visitFunction_decl(ctx):
     scopeTable.top[param.nom] = unique
 
     currentOffset -= 4
-    table[unique] = {index=currentOffset, isUsed=false, declLine=ligne}
+    table[unique] = {name=param.nom, index=currentOffset, isUsed=false, declLine=ligne}
 
     enregistrer unique dans functionTable
 
   visit(ctx.block)
   pop scope
+  return 0
 ```
 
 #### `visitBlock`
 
-Responsabilité:
-
-- ouvrir/fermer un scope lexical
-
-Pseudo-code:
+Responsabilité: gérer l'ouverture/fermeture d'un scope lexical.
 
 ```text
 visitBlock(ctx):
@@ -331,50 +337,29 @@ visitBlock(ctx):
   pour stmt dans ctx.stmts:
     visit(stmt)
   pop scope
-```
-
-#### `visitDeclare_stmt`
-
-Responsabilité:
-
-- parcourir la liste des éléments de déclaration (`declare_elmt`)
-- déléguer la validation/création variable à `visitDeclare_elmt`
-
-Pseudo-code:
-
-```text
-visitDeclare_stmt(ctx):
-  pour elmt dans ctx.declare_elmt:
-    visit(elmt)
+  return 0
 ```
 
 #### `visitDeclare_elmt`
 
-Responsabilité:
-
-- gérer un élément `VAR` simple
-- gérer un élément `assign_stmt` (déclaration + assignment dans la même ligne)
-
-Pseudo-code:
+Responsabilité: créer une variable ou la créer et l'initialiser en même temps.
 
 ```text
 visitDeclare_elmt(ctx):
   si ctx est VAR:
     registerVariable(VAR, line)
-    return
+    return 0
 
   si ctx est assign_stmt:
     registerVariable(VAR, line)
-    visit(assign_stmt)
+    si pas d'erreur:
+        visit(assign_stmt)
+  return 0
 ```
 
 #### `visitAssign_stmt`
 
-Responsabilité:
-
-- typer/vérifier l'initialisation de type `VAR = expr` a l'intérieur d'une déclaration.
-
-Pseudo-code:
+Responsabilité: vérifier l'affectation à l'intérieur d'une déclaration globale.
 
 ```text
 visitAssign_stmt(lhs, rhs):
@@ -382,75 +367,53 @@ visitAssign_stmt(lhs, rhs):
   unique = resolveVariable(lhs)
   si unique introuvable: erreur
   table[unique].isUsed = true
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitReturn_stmt`
 
-Responsabilité:
-
-- valider la cohérence `return` avec le type de la fonction courante.
-
-Pseudo-code:
+Responsabilité: valider la cohérence entre le type de retour défini et ce qui est retourné.
 
 ```text
 visitReturn_stmt(ctx):
   si fonction void:
-    si expr presente: erreur
-    si expr presente: visit(expr)
-    retourner
+    si expr presente: erreur; visit(expr)
+    retourner 0
 
   # fonction int
   si expr absente: erreur
   sinon: visit(expr)
+  return 0
 ```
 
-#### `visitParensExpr`, `visitConstExpr`, `visitVarExpr`
+#### `visitVarExpr`
 
-Responsabilité:
-
-- propagation des types de base.
-
-Pseudo-code:
+Responsabilité: vérifier l'existence de la variable, la marquer utilisée.
 
 ```text
-visitParensExpr: return visit(expr)
-visitConstExpr : return TYPE_INT
-
 visitVarExpr(name):
   unique = resolveVariable(name)
-  si unique introuvable: erreur; return TYPE_INVALID
+  si unique introuvable: erreur; return 0
   table[unique].isUsed = true
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitAssignExpr`
 
-Responsabilité:
-
-- vérifier lhs déclarée
-- vérifier rhs de type entier
-- marquer lhs comme utilisée
-
-Pseudo-code:
+Responsabilité: valider que la partie gauche est déclarée avant affectation.
 
 ```text
 visitAssignExpr(lhs, op, rhs):
   visit(rhs)
   unique = resolveVariable(lhs)
-  si unique introuvable: erreur; return TYPE_INVALID
+  si unique introuvable: erreur; return 0
   table[unique].isUsed = true
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitMultDivModExpr`
 
-Responsabilité:
-
-- verifier types des 2 opérandes
-- warning division/modulo par zéro constant
-
-Pseudo-code:
+Responsabilité: déléguer aux enfants, prévenir en cas de division/modulo constant par 0.
 
 ```text
 visitMultDivModExpr(lhs, op, rhs):
@@ -460,54 +423,24 @@ visitMultDivModExpr(lhs, op, rhs):
   si rhs est constante ET (op == / OU op == % ) ET rhs == 0:
     warning
 
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
 
-Responsabilité:
-
-- exiger une variable déclarée, marquer usage.
-
-Pseudo-code:
+Responsabilité: exiger l'existence de la variable ciblée.
 
 ```text
 visitPre/PostIncDecVarExpr(var):
   unique = resolveVariable(var)
-  si introuvable: erreur; return TYPE_INVALID
+  si introuvable: erreur; return 0
   table[unique].isUsed = true
-  return TYPE_INT
-```
-
-#### `visitUnitaryExpr`, `visitAddSubExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitXORExpr`, `visitLogicBitORExpr`, `visitLogicANDExpr`, `visitLogicORExpr`
-
-Responsabilité:
-
-- schéma homogène: visiter les operandes (validation sémantique), retourner int.
-
-Pseudo-code commun:
-
-```text
-visitBinaryLike(lhs, rhs):
-  visit(lhs)
-  visit(rhs)
-  return TYPE_INT
-
-visitUnaryLike(expr):
-  visit(expr)
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitCallExpr`
 
-Responsabilité:
-
-- vérifier contraintes d'appel builtins/user
-- vérifier arité
-- interdire utilisation d'une fonction void comme expression
-- visiter les arguments (pour propager leurs vérifications sémantiques)
-
-Pseudo-code:
+Responsabilité: vérifier existence de la fonction appelée, arité correspondante, et retours void.
 
 ```text
 visitCallExpr(funcName, args):
@@ -527,32 +460,26 @@ visitCallExpr(funcName, args):
   pour arg dans args:
     visit(arg)
 
-  return TYPE_INT
+  return 0
 ```
 
 #### `visitBreak_stmt`, `visitContinue_stmt`
 
-Responsabilité:
-
-- valider l'usage de `break` et `continue` selon la profondeur de boucle/switch.
-
-Pseudo-code:
+Responsabilité: s'assurer qu'on est bien dans un switch ou une boucle.
 
 ```text
 visitBreak_stmt:
   si loopDepth == 0 ET switchDepth == 0: erreur
+  return 0
 
 visitContinue_stmt:
   si loopDepth == 0: erreur
+  return 0
 ```
 
 #### `visitWhile_stmt`
 
-Responsabilité:
-
-- valider l'expression de condition et le corps de boucle dans le bon contexte.
-
-Pseudo-code:
+Responsabilité: augmenter le niveau de profondeur de boucle pour les branchements.
 
 ```text
 visitWhile_stmt(cond, body):
@@ -560,17 +487,12 @@ visitWhile_stmt(cond, body):
   loopDepth++
   visit(body)
   loopDepth--
+  return 0
 ```
 
 #### `visitSwitch_stmt`
 
-Responsabilité:
-
-- valider l'expression du switch
-- détecter les `case` dupliqués et les `default` multiples
-- visiter les instructions de chaque section
-
-Pseudo-code:
+Responsabilité: vérifier l'absence de doublons dans les cases, vérifier l'unicité de default.
 
 ```text
 visitSwitch_stmt(expr, parts):
@@ -592,11 +514,12 @@ visitSwitch_stmt(expr, parts):
       visit(statement)
 
   switchDepth--
+  return 0
 ```
 
 ---
 
-## 5) IRVisitor: specification détaillée
+## 5. IRVisitor: spécification détaillée
 
 `IRVisitor` prend un AST sémantiquement valide et produit l'IR exécuté par le backend.
 
@@ -621,29 +544,19 @@ continueTargets : pile de cibles continue
 
 #### `createTemp()`
 
-Responsabilité:
-
-- réserver un entier temporaire
-- l'enregistrer dans `table`
-
-Pseudo-code:
+Responsabilité: réserver un entier temporaire et l'enregistrer dans table.
 
 ```text
 createTemp():
   name = "tmp" + tempCounter++
   currentOffset -= 4
-  table[name] = {index=currentOffset, isUsed=true, declLine=0}
+  table[name] = {name=name, index=currentOffset, isUsed=true, declLine=0}
   return name
 ```
 
 #### `resolveVariable(name)`
 
-Responsabilité:
-
-- retrouver le nom unique d'une variable source.
-- fallback: renvoyer `name` si non trouve (utile pour robustesse generation).
-
-Pseudo-code:
+Responsabilité: retrouver le nom unique d'une variable source.
 
 ```text
 resolveVariable(name):
@@ -655,11 +568,7 @@ resolveVariable(name):
 
 #### `gen_unique_id(ctx)`
 
-Responsabilité:
-
-- fabriquer des labels uniques de blocs via ligne+colonne.
-
-Pseudo-code:
+Responsabilité: fabriquer des labels uniques de blocs via ligne+colonne.
 
 ```text
 gen_unique_id(ctx):
@@ -668,13 +577,30 @@ gen_unique_id(ctx):
 
 ### 5.3 Fonctions visitées, une par une
 
-#### `visitProg`
+**Navigation rapide :**
 
-Responsabilité:
+- [`visitProg`](#visitprog-irvisitor)
+- [`visitFunction_decl`](#visitfunction_decl-irvisitor)
+- [`visitBlock`](#visitblock-irvisitor)
+- [`visitDeclare_elmt`](#visitdeclare_elmt-irvisitor)
+- [`visitAssign_stmt`](#visitassign_stmt-irvisitor)
+- [`visitAssignExpr`](#visitassignexpr-irvisitor)
+- [`visitConstExpr`, `visitVarExpr`, `visitParensExpr`](#visitconstexpr-visitvarexpr-visitparensexpr-irvisitor)
+- [`visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`](#visitpreincdecvarepr-visitpostincdecvarepr-irvisitor)
+- [`visitUnitaryExpr`](#visitunaryexpr-irvisitor)
+- [Opérateurs binaires](#visitaddsubexpr-visitmultdivmodexpr-visitcompareexpr-visitequalexpr-visitlogicbitandexpr-visitlogicbitorexpr-visitlogicbitxorexpr-irvisitor)
+- [`visitLogicANDExpr`](#visitlogicandexpr-court-circuit-irvisitor)
+- [`visitLogicORExpr`](#visitlogicorexpr-court-circuit-irvisitor)
+- [`visitCallExpr`](#visitcallexpr-irvisitor)
+- [`visitReturn_stmt`](#visitreturn_stmt-irvisitor)
+- [`visitIf_stmt`](#visitif_stmt-irvisitor)
+- [`visitWhile_stmt`](#visitwhile_stmt-irvisitor)
+- [`visitBreak_stmt`, `visitContinue_stmt`](#visitbreak_stmt-visitcontinue_stmt-irvisitor)
+- [`visitSwitch_stmt`](#visitswitch_stmt-irvisitor)
 
-- parcourir les fonctions et déléguer leur traduction IR.
+#### `visitProg` (IRVisitor)
 
-Pseudo-code:
+Responsabilité: parcourir les fonctions et déléguer leur traduction IR.
 
 ```text
 visitProg(ctx):
@@ -682,16 +608,9 @@ visitProg(ctx):
     visit(fonction)
 ```
 
-#### `visitFunction_decl`
+#### `visitFunction_decl` (IRVisitor)
 
-Responsabilité:
-
-- créer CFG + blocs de base
-- initialiser mapping des paramètres
-- visiter le corps
-- injecter un `ret 0` si le flot ne termine pas explicitement
-
-Pseudo-code:
+Responsabilité: créer CFG + blocs de base, initialiser mapping des paramètres, visiter le corps.
 
 ```text
 visitFunction_decl(ctx):
@@ -713,15 +632,9 @@ visitFunction_decl(ctx):
   pop scope
 ```
 
-#### `visitBlock`
+#### `visitBlock` (IRVisitor)
 
-Responsabilité:
-
-- ouvrir un scope local
-- visiter les statements dans l'ordre
-- stopper si un saut de contrôle a déjà terminé le bloc courant
-
-Pseudo-code:
+Responsabilité: ouvrir/fermer un scope local et visiter les statements.
 
 ```text
 visitBlock(ctx):
@@ -733,28 +646,9 @@ visitBlock(ctx):
   pop scope
 ```
 
-#### `visitDeclare_stmt`
+#### `visitDeclare_elmt` (IRVisitor)
 
-Responsabilité:
-
-- visiter chaque élément de déclaration et déléguer à `visitDeclare_elmt`.
-
-Pseudo-code:
-
-```text
-visitDeclare_stmt(ctx):
-  pour elmt dans ctx.declare_elmt:
-    visit(elmt)
-```
-
-#### `visitDeclare_elmt`
-
-Responsabilité:
-
-- créer un nom unique pour une variable déclarée
-- gérer la forme déclaration simple et déclaration+assignation
-
-Pseudo-code:
+Responsabilité: créer un nom unique pour une variable déclarée, gérer déclaration simple et déclaration+assignation.
 
 ```text
 visitDeclare_elmt(ctx):
@@ -769,13 +663,9 @@ visitDeclare_elmt(ctx):
     visitAssign_stmt(VAR = expr)
 ```
 
-#### `visitAssign_stmt`
+#### `visitAssign_stmt` (IRVisitor)
 
-Responsabilité:
-
-- générer l'affectation IR d'une déclaration initialisée.
-
-Pseudo-code:
+Responsabilité: générer l'IR d'une affectation dans une déclaration initialisée.
 
 ```text
 visitAssign_stmt(lhs, rhs):
@@ -785,13 +675,9 @@ visitAssign_stmt(lhs, rhs):
   return l
 ```
 
-#### `visitAssignExpr`
+#### `visitAssignExpr` (IRVisitor)
 
-Responsabilité:
-
-- générer l'IR des affectations simples et composées.
-
-Pseudo-code:
+Responsabilité: générer l'IR des affectations simples et composées.
 
 ```text
 visitAssignExpr(lhs, op, rhs):
@@ -805,15 +691,9 @@ visitAssignExpr(lhs, op, rhs):
   return l
 ```
 
-#### `visitConstExpr`, `visitVarExpr`, `visitParensExpr`
+#### `visitConstExpr`, `visitVarExpr`, `visitParensExpr` (IRVisitor)
 
-Responsabilité:
-
-- convertir les constantes en temporaires IR
-- résoudre les variables dans le scope courant
-- propager les parenthèses
-
-Pseudo-code:
+Responsabilité: convertir les constantes en temporaires IR, résoudre les variables, propager les parenthèses.
 
 ```text
 visitConstExpr(c):
@@ -828,14 +708,9 @@ visitParensExpr(e):
   return visit(e)
 ```
 
-#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr` (IRVisitor)
 
-Responsabilité:
-
-- générer l'IR des pré/post incréments et décréments.
-- Renvoyer la variable avant incrémentation/décrémentation pour post et la variable après pour pré.
-
-Pseudo-code:
+Responsabilité: générer l'IR des pré/post incréments et décréments.
 
 ```text
 visitPreIncDecVarExpr(var, op):
@@ -854,13 +729,9 @@ visitPostIncDecVarExpr(var, op):
   return old
 ```
 
-#### `visitUnitaryExpr`
+#### `visitUnitaryExpr` (IRVisitor)
 
-Responsabilité:
-
-- générer l'IR des opérations unaires (`-`, `!`).
-
-Pseudo-code:
+Responsabilité: générer l'IR des opérations unaires (`-`, `!`).
 
 ```text
 visitUnitaryExpr(op, e):
@@ -871,13 +742,9 @@ visitUnitaryExpr(op, e):
   return d
 ```
 
-#### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr`
+#### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr` (IRVisitor)
 
-Responsabilité:
-
-- générer l'IR des opérations binaires arithmétiques, de comparaison et bitwise.
-
-Schéma commun:
+Responsabilité: générer l'IR des opérations binaires arithmétiques, de comparaison et bitwise.
 
 ```text
 visitBinary(op, lhs, rhs):
@@ -888,15 +755,9 @@ visitBinary(op, lhs, rhs):
   return d
 ```
 
-#### `visitLogicANDExpr` (court-circuit)
+#### `visitLogicANDExpr` (court-circuit, IRVisitor)
 
-Responsabilité:
-
-- implémenter l'évaluation court-circuit de `&&`
-- éviter l'évaluation de l'opérande droit si l'opérande gauche est faux
-- produire un résultat booléen normalisé (`0` ou `1`) dans une variable IR
-
-Pseudo-code:
+Responsabilité: implémenter l'évaluation court-circuit de `&&`.
 
 ```text
 visitLogicANDExpr(lhs, rhs):
@@ -918,15 +779,56 @@ visitLogicANDExpr(lhs, rhs):
   return dest
 ```
 
-#### `visitLogicORExpr` (court-circuit)
+##### Exemple : programme avec opérateur && (court-circuit)
 
-Responsabilité:
+```c
+int isValidRange(int x, int y) {
+    int result;
+    if (x > 0 && y < 100) {
+        result = 1;
+    } else {
+        result = 0;
+    }
+    return result;
+}
+```
 
-- implémenter l'évaluation court-circuit de `||`
-- éviter l'évaluation de l'opérande droit si l'opérande gauche est vrai
-- produire un résultat booléen normalisé (`0` ou `1`) dans une variable IR
+##### CFG pour (x > 0 && y < 100)
 
-Pseudo-code:
+```mermaid
+graph TD
+  A["eval_lhs<br/>t0 = cmp_gt x, 0"]
+  B["test_lhs<br/>t1 = cmp_ne t0, 0"]
+  C["eval_rhs<br/>t2 = cmp_lt y, 100"]
+  D["result_rhs<br/>t3 = cmp_ne t2, 0<br/>result = t3"]
+  E["short_circuit<br/>result = 0"]
+  F["end<br/>ret result"]
+
+  A --> B
+  B -->|"t1 == 1<br/>(x > 0)"| C
+  B -->|"t1 == 0<br/>(x <= 0)"| E
+  C --> D
+  D --> F
+  E --> F
+
+  classDef eval fill:#fce7f3,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef test fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef rhs fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef shortc fill:#f0d9ff,stroke:#9333ea,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+
+  class A eval
+  class B test
+  class C,D rhs
+  class E shortc
+  class F join
+```
+
+**Court-circuit:** Si `x <= 0` (lhs faux), le rhs n'est jamais évalué - on saute directement à la valeur 0.
+
+#### `visitLogicORExpr` (court-circuit, IRVisitor)
+
+Responsabilité: implémenter l'évaluation court-circuit de `||`.
 
 ```text
 visitLogicORExpr(lhs, rhs):
@@ -948,15 +850,54 @@ visitLogicORExpr(lhs, rhs):
   return dest
 ```
 
-#### `visitCallExpr`
+##### Exemple : programme avec opérateur || (court-circuit)
 
-Responsabilité:
+```c
+int isSpecial(int a, int b) {
+    int result;
+    if (a == 0 || b == 0) {
+        result = 1;
+    } else {
+        result = 0;
+    }
+    return result;
+}
+```
 
-- préparer la liste d'arguments IR
-- émettre l'instruction `call`
-- retourner la variable destination du résultat
+##### CFG pour (a == 0 || b == 0)
 
-Pseudo-code:
+```mermaid
+graph TD
+  A["eval_lhs<br/>t0 = cmp_eq a, 0"]
+  B["test_lhs<br/>t1 = cmp_ne t0, 0"]
+  C["short_circuit<br/>result = 1"]
+  D["eval_rhs<br/>t2 = cmp_eq b, 0"]
+  E["result_rhs<br/>t3 = cmp_ne t2, 0<br/>result = t3"]
+  F["end<br/>ret result"]
+
+  A --> B
+  B -->|"t1 == 1<br/>(a == 0)"| C
+  B -->|"t1 == 0<br/>(a != 0)"| D
+  C --> F
+  D --> E
+  E --> F
+
+  classDef eval fill:#fce7f3,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef test fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef shortc fill:#f0d9ff,stroke:#9333ea,stroke-width:1px,color:#111827
+  classDef rhs fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+
+  class A eval
+  class B test
+  class C shortc
+  class D,E rhs
+  class F join
+```
+
+**Court-circuit:** Si `a == 0` (lhs vrai), le rhs n'est jamais évalué - on saute directement à la valeur 1.
+
+#### `visitCallExpr` (IRVisitor)
 
 ```text
 visitCallExpr(func, args):
@@ -968,14 +909,7 @@ visitCallExpr(func, args):
   return dest
 ```
 
-#### `visitReturn_stmt`
-
-Responsabilité:
-
-- générer un `ret` explicite
-- brancher vers l'épilogue de la fonction
-
-Pseudo-code:
+#### `visitReturn_stmt` (IRVisitor)
 
 ```text
 visitReturn_stmt(ctx):
@@ -988,14 +922,9 @@ visitReturn_stmt(ctx):
   return v
 ```
 
-#### `visitIf_stmt`
+#### `visitIf_stmt` (IRVisitor)
 
-Responsabilité:
-
-- créer les blocs condition/then/else/end
-- connecter les branches selon la condition
-
-Pseudo-code:
+Responsabilité: créer les blocs condition/then/else/end et connecter les branches.
 
 ```text
 visitIf_stmt(cond, thenStmt, elseStmt?):
@@ -1011,14 +940,58 @@ visitIf_stmt(cond, thenStmt, elseStmt?):
   current_bb = bb_end
 ```
 
-#### `visitWhile_stmt`
+##### Exemple : programme avec if/else
 
-Responsabilité:
+```c
+int absVal(int x) {
+    int result;
+    if (x < 0) {
+        result = -x;
+    } else {
+        result = x;
+    }
+    return result;
+}
+```
 
-- créer les blocs cond/body/end
-- gérer les piles `breakTargets` et `continueTargets`
+##### CFG pour absVal(x)
 
-Pseudo-code:
+```mermaid
+graph TD
+  A["prologue<br/>setup stack frame<br/>param: x"]
+  B["condition<br/>t0 = cmp_lt x, 0"]
+  C["then_branch<br/>t1 = neg result, x"]
+  D["else_branch<br/>result = x"]
+  E["end<br/>ret result"]
+  F["epilogue<br/>restore stack"]
+
+  A --> B
+  B -->|"t0 == 1<br/>(x < 0)"| C
+  B -->|"t0 == 0<br/>(x >= 0)"| D
+  C --> E
+  D --> E
+  E --> F
+
+  classDef pro fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+  classDef cond fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef then fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef els fill:#f0d9ff,stroke:#9333ea,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef epi fill:#fee2e2,stroke:#b91c1c,stroke-width:1px,color:#111827
+
+  class A pro
+  class B cond
+  class C then
+  class D els
+  class E join
+  class F epi
+```
+
+**Structure:** Diamond pattern classique (prologue, condition, then, else, end, epilogue).
+
+#### `visitWhile_stmt` (IRVisitor)
+
+Responsabilité: créer les blocs cond/body/end et gérer les piles `breakTargets` et `continueTargets`.
 
 ```text
 visitWhile_stmt(cond, body):
@@ -1038,13 +1011,58 @@ visitWhile_stmt(cond, body):
   current_bb = bb_end
 ```
 
-#### `visitBreak_stmt`, `visitContinue_stmt`
+##### Exemple : programme avec while
 
-Responsabilité:
+```c
+int sumN(int n) {
+    int sum = 0;
+    int i = 1;
+    while (i <= n) {
+        sum = sum + i;
+        i = i + 1;
+    }
+    return sum;
+}
+```
 
-- générer les sauts vers les cibles courantes de `break` et `continue`.
+##### CFG pour sumN(n)
 
-Pseudo-code:
+```mermaid
+graph TD
+  A["prologue<br/>setup stack frame<br/>param: n"]
+  B["init<br/>sum = 0<br/>i = 1"]
+  C["condition<br/>t0 = cmp_le i, n"]
+  D["body<br/>t1 = add sum, i<br/>sum = t1<br/>t2 = add i, 1<br/>i = t2"]
+  E["end<br/>ret sum"]
+  F["epilogue<br/>restore stack"]
+
+  A --> B
+  B --> C
+  C -->|"t0 == 1<br/>(i <= n)"| D
+  C -->|"t0 == 0<br/>(i > n)"| E
+  D --> C
+  E --> F
+
+  classDef pro fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+  classDef init fill:#fce7f3,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef cond fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef body fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef epi fill:#fee2e2,stroke:#b91c1c,stroke-width:1px,color:#111827
+
+  class A pro
+  class B init
+  class C cond
+  class D body
+  class E join
+  class F epi
+```
+
+**Structure:** Loop pattern classique (prologue, init, condition, body, back-edge vers condition, end, epilogue).
+
+#### `visitBreak_stmt`, `visitContinue_stmt` (IRVisitor)
+
+Responsabilité: générer les sauts vers les cibles courantes de `break` et `continue`.
 
 ```text
 visitBreak_stmt:
@@ -1053,20 +1071,17 @@ visitBreak_stmt:
 visitContinue_stmt:
   jump continueTargets.top
 
-Précondition:
-- la passe sémantique (SymbolVisitor) garantie que `break`/`continue` sont utilisés dans un contexte valide
+Précondition: la passe sémantique garantie la validité du contexte de saut.
 ```
 
-#### `visitSwitch_stmt`
+**Points clés :**
 
-Responsabilité:
+- `continueTargets` = où aller avec `continue`
+- `breakTargets` = où aller avec `break`
 
-- evaluer l'expression switch une fois
-- créer une chaine de dispatch (cmp_eq) vers chaque case
-- supporter default
-- supporter fallthrough et break
+#### `visitSwitch_stmt` (IRVisitor)
 
-Pseudo-code simplifié:
+Responsabilité: évaluer l'expression switch, créer chaine de dispatch vers chaque case, supporter fallthrough et break.
 
 ```text
 visitSwitch_stmt(expr, parts):
@@ -1093,9 +1108,82 @@ visitSwitch_stmt(expr, parts):
   current_bb = bb_end
 ```
 
+##### Exemple : programme avec switch
+
+```c
+int getGrade(int score) {
+    int grade;
+    switch (score) {
+        case 1:
+            grade = 65;
+            break;
+        case 2:
+            grade = 75;
+            break;
+        case 3:
+            grade = 85;
+            break;
+        default:
+            grade = 0;
+    }
+    return grade;
+}
+
+int main() {
+    int result = getGrade(2);
+    return result;
+}
+```
+
+##### CFG pour getGrade(2)
+
+```mermaid
+graph TD
+  A["prologue<br/>setup stack frame"]
+  B["test_case_1<br/>t0 = cmp_eq score, 1"]
+  C["test_case_2<br/>t1 = cmp_eq score, 2"]
+  D["test_case_3<br/>t2 = cmp_eq score, 3"]
+  E["case_1<br/>grade = 65"]
+  F["case_2<br/>grade = 75"]
+  G["case_3<br/>grade = 85"]
+  H["default<br/>grade = 0"]
+  I["end<br/>ret grade"]
+  J["epilogue<br/>restore stack"]
+
+  A --> B
+  B -->|"t0 == 1"| E
+  B -->|"t0 != 1"| C
+  C -->|"t1 == 1"| F
+  C -->|"t1 != 1"| D
+  D -->|"t2 == 1"| G
+  D -->|"t2 != 1"| H
+
+  E --> I
+  F --> I
+  G --> I
+  H --> I
+  I --> J
+
+  classDef pro fill:#dbeafe,stroke:#1d4ed8,stroke-width:1px,color:#111827
+  classDef test fill:#fef9c3,stroke:#a16207,stroke-width:1px,color:#111827
+  classDef case fill:#dcfce7,stroke:#15803d,stroke-width:1px,color:#111827
+  classDef deflt fill:#f0d9ff,stroke:#9333ea,stroke-width:1px,color:#111827
+  classDef join fill:#ffe4e6,stroke:#be123c,stroke-width:1px,color:#111827
+  classDef epi fill:#fee2e2,stroke:#b91c1c,stroke-width:1px,color:#111827
+
+  class A pro
+  class B,C,D test
+  class E,F,G case
+  class H deflt
+  class I join
+  class J epi
+```
+
+**Structure:** 11 blocs (prologue, 3 blocs test, 3 blocs case, 1 bloc default, 1 bloc end, epilogue) avec chaîne de branchements.
+
 ---
 
-## 6) Backend et conséquences du mode int-only
+## 6. Backend et conséquences du mode int-only
 
 Le backend reste compatible avec des structures historiques plus larges, mais le front-end actuel n'émet que:
 
@@ -1105,7 +1193,7 @@ Le backend reste compatible avec des structures historiques plus larges, mais le
 
 ---
 
-## 7) Tests et exécution
+## 7. Tests et exécution
 
 ### 7.1 Build
 
@@ -1115,19 +1203,17 @@ make clean
 make
 ```
 
-### 7.2 Régression recommandée (scope supporté)
+### 7.2 Régression recommandée
 
 ```bash
 python3 ifcc-test.py testfiles
 ```
 
-Note:
-
-- `testfiles/undefined` peut produire des résultats différents selon le compilateur, la version et la plate-forme (comportement C non défini). Cette catégorie ne doit pas être utilisée comme oracle strict.
+Note: `testfiles/undefined` peut produire des résultats différents selon le compilateur, la version et la plate-forme (comportement C non défini). Cette catégorie ne doit pas être utilisée comme oracle strict.
 
 ---
 
-## 8) Règles d'évolution (ordre obligatoire)
+## 8. Règles d'évolution (ordre obligatoire)
 
 Si une nouvelle fonctionnalité est ajoutée:
 
@@ -1138,18 +1224,13 @@ Si une nouvelle fonctionnalité est ajoutée:
 5. Une fois les tests au vert, supprimer `not_implemented/` et déplacer les cas vers `valid/` et `invalid/`
 6. Mettre à jour README + ce fichier
 
-Règle forte:
-
-- ne jamais ajouter de génération IR sans barrière sémantique explicite.
+**Règle forte:** ne jamais ajouter de génération IR sans barrière sémantique explicite.
 
 ---
 
-## 9) Exemple fil-rouge (du source au CFG)
+## 9. Exemple fil-rouge (du source au CFG)
 
-Objectif de cette section:
-
-- montrer le chemin d'un mini programme dans toutes les passes
-- nommer les fonctions qui interviennent et ce qu'elles produisent
+### 9.1 Parsing (ANTLR)
 
 Programme exemple:
 
@@ -1169,16 +1250,14 @@ int main() {
 }
 ```
 
-### 9.1 Parsing (ANTLR)
-
 Points clé:
 
 - `prog` contient 2 `function_decl`
 - la déclaration `int z = x + y;` est un `declare_stmt` contenant un `declare_elmt(assign_stmt)`
-- `a += 10` est un `AssignExpr` (operateur compose)
+- `a += 10` est un `AssignExpr` (opérateur composé)
 - `return add(a, b)` est un `Return_stmt` avec `CallExpr`
 
-### 9.2 Passe sémantique (`SymbolVisitor`)
+### 9.2 Passe sémantique (SymbolVisitor)
 
 Ordre logique:
 
@@ -1187,34 +1266,23 @@ visitProg
   -> predeclare add/main dans functionTable
   -> visitFunction_decl(add)
      -> scope params x,y
-     -> visitDeclare_stmt(z = x + y)
-        -> visitAddSubExpr(x,y)
+     -> visitDeclare_elmt(z = x + y)
+        -> visite via ifccBaseVisitor(x,y)
      -> visitReturn_stmt(return z)
   -> visitFunction_decl(main)
-     -> visitDeclare_stmt(a = 2)
-     -> visitDeclare_stmt(b = 3)
+     -> visitDeclare_elmt(a = 2)
+     -> visitDeclare_elmt(b = 3)
      -> visitIf_stmt
-        -> visitCompareExpr(a < b)
+        -> visite via ifccBaseVisitor(a < b)
         -> visitAssignExpr(a += 10)
      -> visitReturn_stmt(return add(a,b))
         -> visitCallExpr(add,[a,b])
   -> checkUnusedVariables
 ```
 
-Effet concret sur les tables:
+### 9.3 Passe IR (IRVisitor)
 
-- `functionTable[add] = {returnType=Int, arity=2, ...}`
-- `functionTable[main] = {returnType=Int, arity=0, ...}`
-- `table` contient des noms uniques (`x_0`, `y_1`, `z_2`, `a_3`, `b_4`, ...)
-- chaque lecture/écriture marque `isUsed = true`
-
-### 9.3 Passe IR (`IRVisitor`)
-
-Idée générale:
-
-- un CFG par fonction
-- chaque expression créer des temporaires (`tmpN`)
-- chaque contrôle (`if`, `while`, `switch`) créer des basic blocks reliés
+Idée générale: un CFG par fonction, chaque expression crée des temporaires (tmpN).
 
 Pseudo-trace simplifiée pour `main`:
 
@@ -1240,12 +1308,24 @@ if_end:
   jump epilogue
 ```
 
-#### Visualiser les graphes
+### 9.4 Lexique IR
 
-Pour visualiser les graphes mermaid en mode preview il faut installer une extension qui gère les preview mermaid sur VSCode comme la suivante par exemple :
-[Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+- `ldconst <dest> <value>` : charger une constante
+- `copy <dest> <src>` : copier une valeur
+- `add/sub/mul/div <dest> <lhs> <rhs>` : opérations arithmétiques
+- `cmp_lt <dest> <lhs> <rhs>` : comparaison (<)
+- `branch <cond>` : bifurcation conditionnelle
+- `call <func> <args>` : appel de fonction
+- `ret <value>` : retour
+- `jump <target>` : saut inconditionnel
+- `t0, t1, ...` : temporaires (variables de courte durée)
+- `a_3, b_4, ...` : variables locales avec suffixes uniques
 
-##### CFG pour `add(int x, int y)`:
+### 9.5 Visualisation des CFG
+
+Pour visualiser les graphes mermaid en mode preview, installez une extension qui gère mermaid sur VSCode : [Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+
+#### CFG pour `add(int x, int y)`:
 
 ```mermaid
 graph TD
@@ -1260,7 +1340,7 @@ graph TD
   class C epi
 ```
 
-Structure simple : 3 blocs linéaires sans branchement.
+**Structure:** 3 blocs linéaires sans branchement.
 
 - Paramètres `x_0`, `y_1` chargés en pile
 - Temporaire `t0` pour stocker le résultat de l'addition
@@ -1288,23 +1368,10 @@ graph TD
   class E epi
 ```
 
-Structure avec contrôle de flux : 5 blocs avec branchement conditionnel.
+**Structure:** 5 blocs avec branchement conditionnel (diamond pattern).
 
-**Lexique IR utilisé:**
-
-- `ldconst <dest> <value>` : charger une constante
-- `copy <dest> <src>` : copier une valeur
-- `add/sub/mul/div <dest> <lhs> <rhs>` : opérations arithmétiques
-- `cmp_lt <dest> <lhs> <rhs>` : comparaison (<)
-- `branch <cond>` : bifurcation conditionnelle
-- `call <func> <args>` : appel de fonction
-- `ret <value>` : retour
-- `jump <target>` : saut inconditionnel
-- `t0, t1, ...` : temporaires (variables de courte durée)
-- `a_3, b_4, ...` : variables locales avec suffixes uniques
-
-**Résultat:**
+### 9.6 Résultat
 
 - CFG `add` : 3 blocs, un seul chemin d'exécution
-- CFG `main` : 5 blocs, avec convergence après le `if` (diamond pattern classique)
+- CFG `main` : 5 blocs, avec convergence après le `if` (diamond pattern)
 - IR strictement entier, sans opérations mémoire indirecte

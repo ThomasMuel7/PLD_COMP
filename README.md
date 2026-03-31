@@ -6,6 +6,36 @@ Ce dépôt contient notre compilateur ifcc développé en C++ avec ANTLR4 dans l
 
 Pour une vue détaillée de l'architecture, des passes internes et du pseudo-code de maintenance, voir [MAINTENANCE.md](MAINTENANCE.md).
 
+## Table des matières
+
+- [1. Configuration](#1-configuration)
+  - [1.1 Dépendances](#11-dépendances)
+  - [1.2 Fichiers à inclure](#12-fichiers-à-inclure)
+- [2. Périmètre actuellement implémenté](#2-périmètre-actuellement-implémenté)
+  - [2.1 Forme de programme acceptée](#21-forme-de-programme-acceptée)
+  - [2.2 Instructions supportées](#22-instructions-supportées)
+  - [2.3 Expressions supportées](#23-expressions-supportées)
+  - [2.4 Commentaires et directives](#24-commentaires-et-directives)
+  - [2.5 Non supporté dans cette version](#25-non-supporté-dans-cette-version)
+- [3. Vérifications sémantiques implémentées](#3-vérifications-sémantiques-implémentées)
+  - [3.1 Pourquoi hasError et le retour 0 ?](#31-pourquoi-haserror-et-le-retour-0-)
+- [4. Génération de code](#4-génération-de-code)
+  - [4.1 Architecture](#41-architecture)
+- [5. Structure du projet](#5-structure-du-projet)
+- [6. Build et exécution](#6-build-et-exécution)
+  - [6.1 Compilation du compilateur](#61-compilation-du-compilateur)
+  - [6.2 Utilisation](#62-utilisation)
+- [7. Stratégie de tests actuelle](#7-stratégie-de-tests-actuelle)
+  - [7.1 Structure des tests](#71-structure-des-tests)
+  - [7.2 Workflow de développement des tests](#72-workflow-de-développement-des-tests)
+  - [7.3 Exécuter les tests](#73-exécuter-les-tests)
+  - [7.4 Environnement Windows](#74-environnement-windows)
+- [8. Répartition des tâches](#8-répartition-des-tâches)
+- [9. Pourquoi certains tests peuvent diverger](#9-pourquoi-certains-tests-peuvent-diverger)
+  - [9.1 getchar() / putchar()](#91-getchar--putchar)
+  - [9.2 Dossier testfiles/undefined](#92-dossier-testfilesundefined)
+  - [9.3 Tests échoués sur macOS](#93-tests-échoués-sur-macos)
+
 ## 1. Configuration
 
 ### 1.1 Dépendances
@@ -130,19 +160,15 @@ Notes:
 - la détection de division par zéro ne couvre pas tous les cas dynamiques (exemple: `(0)` et variable qui vaut 0 ne sont pas traités)
 - les warnings (variable non utilisée, division/modulo par zéro constant) ne bloquent pas la compilation
 
-### 3.1 Pourquoi `TYPE_INT` et `TYPE_INVALID` ?
+### 3.1 Pourquoi hasError et le retour 0 ?
 
-- `TYPE_INT`: l'expression est valide et se comporte comme un `int`.
-- `TYPE_INVALID`: une erreur a déjà été trouvée dans l'expression.
+Le compilateur ne gérant que des types entiers (int), l'analyse sémantique s'appuie sur un simple booléen hasError pour propager les erreurs, plutôt que sur un système de typage complexe pour les retours.
 
-L'objectif est simple: continuer l'analyse même après une première erreur, pour afficher des messages utiles sans planter.
+Dès qu'une erreur sémantique est rencontrée (variable non déclarée, appel de fonction inconnu, etc.), on affiche l'erreur et on passe hasError à true.
 
-Exemple:
+Le visiteur continue son exécution jusqu'à la fin de l'arbre pour remonter un maximum d'erreurs en une seule passe, évitant ainsi un arrêt brutal à la première faute.
 
-- `a = b + 1;` avec `b` non déclarée
-- `b` produit `TYPE_INVALID`
-- le reste de l'expression est quand même visité
-- le compilateur peut signaler d'autres problèmes dans le fichier
+Les méthodes renvoient toutes 0. Les expressions simples (comme les additions ou parenthèses) utilisent le parcours récursif par défaut de l'AST généré par ANTLR (ifccBaseVisitor)
 
 ## 4. Génération de code
 
@@ -323,9 +349,10 @@ Ces programmes ont un comportement C non défini. Il est normal d'observer des d
 2. **Détection de division par zéro**: Comportement indéfini en C, divergences acceptables
 3. **ABI et appels de fonctions**: Différences dans le respect strict des normes ARM64
 
-#### Tests de syntaxe invalide non rejetés
+#### Tests de syntaxe invalide "non rejetés" par le compilateur de référence
 
-Ces 10 tests testent des programmes avec des erreurs syntaxiques qui **devraient être rejetés** par ifcc lors de la compilation, mais qui ne le sont pas sur macOS:
+Ces 10 programmes comportent des erreurs syntaxiques évidentes (ex: opérateur binaire incomplet). **Ils sont correctement rejetés par notre compilateur `ifcc`**.
+Cependant, le script de test signale un échec sur macOS car le compilateur de référence du système (`clang`, souvent appelé via la commande `gcc`) gère ces erreurs différemment (tolérance, rattrapage d'erreur, ou crash interne) et ne renvoie pas un code de retour cohérent avec nos attentes.
 
 - `testfiles-add-invalid-12_add_fail`: `a = 5 +;` (opérateur binaire incomplet)
 - `testfiles-add-invalid-13_add_fail2`: `a = 5 ++ 5;` (deux incréments consécutifs invalides)
