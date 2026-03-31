@@ -235,55 +235,45 @@ ArmBackend::ArmBackend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable
 
 void ArmBackend::buildLocalOffsets(CFG *cfg)
 {
-  currentCFG = cfg;
-  localOffsets.clear();
-  
-  std::set<std::string> usedVars;
-  for (BasicBlock *bb : cfg->blocks)
-  {
-    for (IRInstr *instr : bb->instrs)
-    {
-      for (const auto &param : instr->getParams())
-      {
-        if (symbolTable.find(param) != symbolTable.end())
-        {
-          usedVars.insert(param);
-        }
-      }
-    }
-  }
-  
-  for (const auto &paramName : cfg->paramVarNames)
-  {
-    usedVars.insert(paramName);
-  }
+    currentCFG = cfg;
+    localOffsets.clear();
 
-  int offset = -4;
-  for (const auto &var : usedVars)
-  {
-    localOffsets[var] = offset;
-    offset -= 4;
-  }
+    std::set<std::string> functionVars;
+
+    for (const auto &paramName : cfg->paramVarNames)
+        functionVars.insert(paramName);
+
+    for (BasicBlock *bb : cfg->blocks)
+        for (IRInstr *instr : bb->instrs)
+            for (const auto &param : instr->getParams())
+                if (symbolTable.find(param) != symbolTable.end())
+                    functionVars.insert(param);
+
+    int minOffset = 0;
+    for (const auto &varName : functionVars)
+        minOffset = std::min(minOffset, symbolTable.at(varName).index);
+
+    int frameSize = -minOffset;
+    if (frameSize % 16 != 0)
+        frameSize += 16 - (frameSize % 16);
+
+    currentFrameSize = frameSize;
+
+    for (const auto &varName : functionVars)
+        localOffsets[varName] = frameSize + symbolTable.at(varName).index;
 }
 
 int ArmBackend::computeFrameSize() const
 {
   if (currentCFG == nullptr) return 0;
-  
-  int totalVars = localOffsets.size();
-  int size = totalVars * 4;
-  
-  if (size % 16 != 0) size += 16 - (size % 16);
-  return size;
+  return currentFrameSize;
 }
 
 string ArmBackend::getOffset(const string &varName)
 {
   if (localOffsets.find(varName) != localOffsets.end())
   {
-    int frameSize = computeFrameSize();
-    int spOffset = frameSize + localOffsets[varName];
-    return to_string(spOffset);
+    return to_string(localOffsets[varName]);
   }
   return "0";
 }
