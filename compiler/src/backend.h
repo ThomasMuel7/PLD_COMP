@@ -50,9 +50,4 @@ private:
   std::string loadBinaryOperands(IRInstr *instr);
   std::string saveResultEax(IRInstr *instr);
   std::string generate(IRInstr *instr) override;
-  void buildLocalOffsets(CFG *cfg);  // Build per-function offset map
-  
-  CFG *currentCFG = nullptr;
-  int currentFrameSize = 0;
-  std::map<std::string, int> localOffsets;
 };

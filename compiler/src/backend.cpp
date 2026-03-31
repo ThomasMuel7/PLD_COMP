@@ -233,47 +233,29 @@ string x86Backend::generate(IRInstr *instr) {
 ArmBackend::ArmBackend(const vector<CFG *> &cfgs, const SymbolTable &symbolTable)
     : backend(cfgs, symbolTable) {}
 
-void ArmBackend::buildLocalOffsets(CFG *cfg)
-{
-    currentCFG = cfg;
-    localOffsets.clear();
-
-    std::set<std::string> functionVars;
-
-    for (const auto &paramName : cfg->paramVarNames)
-        functionVars.insert(paramName);
-
-    for (BasicBlock *bb : cfg->blocks)
-        for (IRInstr *instr : bb->instrs)
-            for (const auto &param : instr->getParams())
-                if (symbolTable.find(param) != symbolTable.end())
-                    functionVars.insert(param);
-
-    int minOffset = 0;
-    for (const auto &varName : functionVars)
-        minOffset = std::min(minOffset, symbolTable.at(varName).index);
-
-    int frameSize = -minOffset;
-    if (frameSize % 16 != 0)
-        frameSize += 16 - (frameSize % 16);
-
-    currentFrameSize = frameSize;
-
-    for (const auto &varName : functionVars)
-        localOffsets[varName] = frameSize + symbolTable.at(varName).index;
-}
-
 int ArmBackend::computeFrameSize() const
 {
-  if (currentCFG == nullptr) return 0;
-  return currentFrameSize;
+  int minOffset = 0;
+  for (const auto &entry : symbolTable)
+  {
+    minOffset = std::min(minOffset, entry.second.index);
+  }
+  int size = -minOffset;
+  if (size % 16 != 0)
+  {
+    size += 16 - (size % 16);
+  }
+  return size;
 }
 
 string ArmBackend::getOffset(const string &varName)
 {
-  if (localOffsets.find(varName) != localOffsets.end())
+  auto it = symbolTable.find(varName);
+  if (it != symbolTable.end())
   {
-    return to_string(localOffsets[varName]);
+    int frameSize = computeFrameSize();
+    int spOffset = frameSize + it->second.index;
+    return to_string(spOffset);
   }
   return "0";
 }
@@ -292,11 +274,9 @@ string ArmBackend::saveResultEax(IRInstr *instr)
 
 void ArmBackend::translate()
 {
+  int frameSize = computeFrameSize();
   for (CFG *cfg : cfgs)
   {
-    buildLocalOffsets(cfg);
-    int frameSize = computeFrameSize();
-    
     string labelPrefix = cfg->functionName + "_";
     auto asmLabel = [&](BasicBlock *bb) {
       if (bb->label == "prologue") {
