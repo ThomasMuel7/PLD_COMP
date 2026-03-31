@@ -47,8 +47,8 @@ Pour visualiser les graphes mermaid en mode preview, nous vous recommandons d'in
   - [9.1 Parsing (ANTLR)](#91-parsing-antlr)
   - [9.2 Passe sémantique (SymbolVisitor)](#92-passe-sémantique-symbolvisitor)
   - [9.3 Passe IR (IRVisitor)](#93-passe-ir-irvisitor)
-  - [9.4 Visualisation des CFG](#95-visualisation-des-cfg)
-  - [9.5 Assembleur x86-64 généré](#97-assembleur-x86-64-généré)
+  - [9.4 Visualisation des CFG](#94-visualisation-des-cfg)
+  - [9.5 Assembleur x86-64 généré](#95-assembleur-x86-64-généré)
 
 ---
 
