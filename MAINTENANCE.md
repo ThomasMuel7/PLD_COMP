@@ -44,11 +44,11 @@ Pour visualiser les graphes mermaid en mode preview, nous vous recommandons d'in
   - [7.2 Régression recommandée](#72-régression-recommandée)
 - [8. Règles d'évolution (ordre obligatoire)](#8-règles-dévolution-ordre-obligatoire)
 - [9. Exemple fil-rouge (du source au CFG)](#9-exemple-fil-rouge-du-source-au-cfg)
-  - [9.1 Parsing (ANTLR)](#91-parsing-antlr)
-  - [9.2 Passe sémantique (SymbolVisitor)](#92-passe-sémantique-symbolvisitor)
-  - [9.3 Passe IR (IRVisitor)](#93-passe-ir-irvisitor)
+  - [9.1 Parsing ANTLR](#91-parsing-antlr)
+  - [9.2 Passe sémantique SymbolVisitor](#92-passe-sémantique-symbolvisitor)
+  - [9.3 Passe IR IRVisitor](#93-passe-ir-irvisitor)
   - [9.4 Visualisation des CFG](#94-visualisation-des-cfg)
-  - [9.5 Assembleur x86-64 généré](#95-assembleur-x86-64-généré)
+  - [9.5 Assembleur x86-64](#95-assembleur-x86-64)
 
 ---
 
@@ -226,7 +226,7 @@ switchDepth               : profondeur switch
 
 ### 4.2 Helpers
 
-#### `resolveVariable(originalName)`
+#### resolveVariable(originalName)
 
 Responsabilité: trouver le nom interne visible depuis le scope courant.
 
@@ -238,7 +238,7 @@ resolveVariable(name):
   retourner ""
 ```
 
-#### `lookupVariableInfo(originalName)`
+#### lookupVariableInfo(originalName)
 
 Responsabilité: obtenir `VariableInfo*` en partant d'un nom source.
 
@@ -250,7 +250,7 @@ lookupVariableInfo(name):
   retourner &table[unique]
 ```
 
-#### `checkUnusedVariables()`
+#### checkUnusedVariables()
 
 Responsabilité: émettre les warnings unused en fin de passe.
 
@@ -265,22 +265,22 @@ checkUnusedVariables():
 
 **Navigation rapide :**
 
-- [`visitProg`](#visitprog)
-- [`visitFunction_decl`](#visitfunction_decl)
-- [`visitBlock`](#visitblock)
-- [`visitDeclare_elmt`](#visitdeclare_elmt)
-- [`visitAssign_stmt`](#visitassign_stmt)
-- [`visitReturn_stmt`](#visitreturn_stmt)
-- [`visitVarExpr`](#visitvarexpr)
-- [`visitAssignExpr`](#visitassignexpr)
-- [`visitMultDivModExpr`](#visitmultdivmodexpr)
-- [`visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`](#visitpreincdecvarepr-visitpostincdecvarepr)
-- [`visitCallExpr`](#visitcallexpr)
-- [`visitBreak_stmt`, `visitContinue_stmt`](#visitbreak_stmt-visitcontinue_stmt)
-- [`visitWhile_stmt`](#visitwhile_stmt)
-- [`visitSwitch_stmt`](#visitswitch_stmt)
+- [visitProg](#visitprog)
+- [visitFunction_decl](#visitfunction_decl)
+- [visitBlock](#visitblock)
+- [visitDeclare_elmt](#visitdeclare_elmt)
+- [visitAssign_stmt](#visitassign_stmt)
+- [visitReturn_stmt](#visitreturn_stmt)
+- [visitVarExpr](#visitvarexpr)
+- [visitAssignExpr](#visitassignexpr)
+- [visitMultDivModExpr](#visitmultdivmodexpr)
+- [visitPreIncDecVarExpr et visitPostIncDecVarExpr](#visitpreincdecvarepr-et-visitpostincdecvarepr)
+- [visitCallExpr](#visitcallexpr)
+- [visitBreak_stmt et visitContinue_stmt](#visitbreak_stmt-et-visitcontinue_stmt)
+- [visitWhile_stmt](#visitwhile_stmt)
+- [visitSwitch_stmt](#visitswitch_stmt)
 
-#### `visitProg`
+#### visitProg
 
 Responsabilité: prédéclarer toutes les signatures, vérifier doubles, forcer la présence de main.
 
@@ -302,7 +302,7 @@ visitProg(ctx):
   return 0
 ```
 
-#### `visitFunction_decl`
+#### visitFunction_decl
 
 Responsabilité: initialiser le contexte fonction et allouer les paramètres.
 
@@ -332,7 +332,7 @@ visitFunction_decl(ctx):
   return 0
 ```
 
-#### `visitBlock`
+#### visitBlock
 
 Responsabilité: gérer l'ouverture/fermeture d'un scope lexical.
 
@@ -345,7 +345,7 @@ visitBlock(ctx):
   return 0
 ```
 
-#### `visitDeclare_elmt`
+#### visitDeclare_elmt
 
 Responsabilité: créer une variable ou la créer et l'initialiser en même temps.
 
@@ -362,7 +362,7 @@ visitDeclare_elmt(ctx):
   return 0
 ```
 
-#### `visitAssign_stmt`
+#### visitAssign_stmt
 
 Responsabilité: vérifier l'affectation à l'intérieur d'une déclaration globale.
 
@@ -375,7 +375,7 @@ visitAssign_stmt(lhs, rhs):
   return 0
 ```
 
-#### `visitReturn_stmt`
+#### visitReturn_stmt
 
 Responsabilité: valider la cohérence entre le type de retour défini et ce qui est retourné.
 
@@ -391,7 +391,7 @@ visitReturn_stmt(ctx):
   return 0
 ```
 
-#### `visitVarExpr`
+#### visitVarExpr
 
 Responsabilité: vérifier l'existence de la variable, la marquer utilisée.
 
@@ -403,7 +403,7 @@ visitVarExpr(name):
   return 0
 ```
 
-#### `visitAssignExpr`
+#### visitAssignExpr
 
 Responsabilité: valider que la partie gauche est déclarée avant affectation.
 
@@ -416,7 +416,7 @@ visitAssignExpr(lhs, op, rhs):
   return 0
 ```
 
-#### `visitMultDivModExpr`
+#### visitMultDivModExpr
 
 Responsabilité: déléguer aux enfants, prévenir en cas de division/modulo constant par 0.
 
@@ -431,7 +431,7 @@ visitMultDivModExpr(lhs, op, rhs):
   return 0
 ```
 
-#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`
+#### visitPreIncDecVarExpr et visitPostIncDecVarExpr
 
 Responsabilité: exiger l'existence de la variable ciblée.
 
@@ -443,7 +443,7 @@ visitPre/PostIncDecVarExpr(var):
   return 0
 ```
 
-#### `visitCallExpr`
+#### visitCallExpr
 
 Responsabilité: vérifier existence de la fonction appelée, arité correspondante, et retours void.
 
@@ -468,7 +468,7 @@ visitCallExpr(funcName, args):
   return 0
 ```
 
-#### `visitBreak_stmt`, `visitContinue_stmt`
+#### visitBreak_stmt et visitContinue_stmt
 
 Responsabilité: s'assurer qu'on est bien dans un switch ou une boucle.
 
@@ -482,7 +482,7 @@ visitContinue_stmt:
   return 0
 ```
 
-#### `visitWhile_stmt`
+#### visitWhile_stmt
 
 Responsabilité: augmenter le niveau de profondeur de boucle pour les branchements.
 
@@ -495,7 +495,7 @@ visitWhile_stmt(cond, body):
   return 0
 ```
 
-#### `visitSwitch_stmt`
+#### visitSwitch_stmt
 
 Responsabilité: vérifier l'absence de doublons dans les cases, vérifier l'unicité de default.
 
@@ -547,7 +547,7 @@ continueTargets : pile de cibles continue
 
 ### 5.2 Helpers
 
-#### `createTemp()`
+#### createTemp()
 
 Responsabilité: réserver un entier temporaire et l'enregistrer dans table.
 
@@ -559,7 +559,7 @@ createTemp():
   return name
 ```
 
-#### `resolveVariable(name)`
+#### resolveVariable(name)
 
 Responsabilité: retrouver le nom unique d'une variable source.
 
@@ -571,7 +571,7 @@ resolveVariable(name):
   retourner name
 ```
 
-#### `gen_unique_id(ctx)`
+#### gen_unique_id(ctx)
 
 Responsabilité: fabriquer des labels uniques de blocs via ligne+colonne.
 
@@ -584,26 +584,26 @@ gen_unique_id(ctx):
 
 **Navigation rapide :**
 
-- [`visitProg`](#visitprog-irvisitor)
-- [`visitFunction_decl`](#visitfunction_decl-irvisitor)
-- [`visitBlock`](#visitblock-irvisitor)
-- [`visitDeclare_elmt`](#visitdeclare_elmt-irvisitor)
-- [`visitAssign_stmt`](#visitassign_stmt-irvisitor)
-- [`visitAssignExpr`](#visitassignexpr-irvisitor)
-- [`visitConstExpr`, `visitVarExpr`, `visitParensExpr`](#visitconstexpr-visitvarexpr-visitparensexpr-irvisitor)
-- [`visitPreIncDecVarExpr`, `visitPostIncDecVarExpr`](#visitpreincdecvarepr-visitpostincdecvarepr-irvisitor)
-- [`visitUnitaryExpr`](#visitunaryexpr-irvisitor)
+- [visitProg](#visitprog-irvisitor)
+- [visitFunction_decl](#visitfunction_decl-irvisitor)
+- [visitBlock](#visitblock-irvisitor)
+- [visitDeclare_elmt](#visitdeclare_elmt-irvisitor)
+- [visitAssign_stmt](#visitassign_stmt-irvisitor)
+- [visitAssignExpr](#visitassignexpr-irvisitor)
+- [visitConstExpr, visitVarExpr, visitParensExpr](#visitconstexpr-visitvarexpr-visitparensexpr-irvisitor)
+- [visitPreIncDecVarExpr et visitPostIncDecVarExpr](#visitpreincdecvarepr-et-visitpostincdecvarepr-irvisitor)
+- [visitUnitaryExpr](#visitunaryexpr-irvisitor)
 - [Opérateurs binaires](#visitaddsubexpr-visitmultdivmodexpr-visitcompareexpr-visitequalexpr-visitlogicbitandexpr-visitlogicbitorexpr-visitlogicbitxorexpr-irvisitor)
-- [`visitLogicANDExpr`](#visitlogicandexpr-court-circuit-irvisitor)
-- [`visitLogicORExpr`](#visitlogicorexpr-court-circuit-irvisitor)
-- [`visitCallExpr`](#visitcallexpr-irvisitor)
-- [`visitReturn_stmt`](#visitreturn_stmt-irvisitor)
-- [`visitIf_stmt`](#visitif_stmt-irvisitor)
-- [`visitWhile_stmt`](#visitwhile_stmt-irvisitor)
-- [`visitBreak_stmt`, `visitContinue_stmt`](#visitbreak_stmt-visitcontinue_stmt-irvisitor)
-- [`visitSwitch_stmt`](#visitswitch_stmt-irvisitor)
+- [visitLogicANDExpr](#visitlogicandexpr-court-circuit-irvisitor)
+- [visitLogicORExpr](#visitlogicorexpr-court-circuit-irvisitor)
+- [visitCallExpr](#visitcallexpr-irvisitor)
+- [visitReturn_stmt](#visitreturn_stmt-irvisitor)
+- [visitIf_stmt](#visitif_stmt-irvisitor)
+- [visitWhile_stmt](#visitwhile_stmt-irvisitor)
+- [visitBreak_stmt et visitContinue_stmt](#visitbreak_stmt-et-visitcontinue_stmt-irvisitor)
+- [visitSwitch_stmt](#visitswitch_stmt-irvisitor)
 
-#### `visitProg` (IRVisitor)
+#### visitProg (IRVisitor)
 
 Responsabilité: parcourir les fonctions et déléguer leur traduction IR.
 
@@ -613,7 +613,7 @@ visitProg(ctx):
     visit(fonction)
 ```
 
-#### `visitFunction_decl` (IRVisitor)
+#### visitFunction_decl (IRVisitor)
 
 Responsabilité: créer CFG + blocs de base, initialiser mapping des paramètres, visiter le corps.
 
@@ -637,7 +637,7 @@ visitFunction_decl(ctx):
   pop scope
 ```
 
-#### `visitBlock` (IRVisitor)
+#### visitBlock (IRVisitor)
 
 Responsabilité: ouvrir/fermer un scope local et visiter les statements.
 
@@ -651,7 +651,7 @@ visitBlock(ctx):
   pop scope
 ```
 
-#### `visitDeclare_elmt` (IRVisitor)
+#### visitDeclare_elmt (IRVisitor)
 
 Responsabilité: créer un nom unique pour une variable déclarée, gérer déclaration simple et déclaration+assignation.
 
@@ -668,7 +668,7 @@ visitDeclare_elmt(ctx):
     visitAssign_stmt(VAR = expr)
 ```
 
-#### `visitAssign_stmt` (IRVisitor)
+#### visitAssign_stmt (IRVisitor)
 
 Responsabilité: générer l'IR d'une affectation dans une déclaration initialisée.
 
@@ -680,7 +680,7 @@ visitAssign_stmt(lhs, rhs):
   return l
 ```
 
-#### `visitAssignExpr` (IRVisitor)
+#### visitAssignExpr (IRVisitor)
 
 Responsabilité: générer l'IR des affectations simples et composées.
 
@@ -696,7 +696,7 @@ visitAssignExpr(lhs, op, rhs):
   return l
 ```
 
-#### `visitConstExpr`, `visitVarExpr`, `visitParensExpr` (IRVisitor)
+#### visitConstExpr, visitVarExpr, visitParensExpr (IRVisitor)
 
 Responsabilité: convertir les constantes en temporaires IR, résoudre les variables, propager les parenthèses.
 
@@ -713,7 +713,7 @@ visitParensExpr(e):
   return visit(e)
 ```
 
-#### `visitPreIncDecVarExpr`, `visitPostIncDecVarExpr` (IRVisitor)
+#### visitPreIncDecVarExpr et visitPostIncDecVarExpr (IRVisitor)
 
 Responsabilité: générer l'IR des pré/post incréments et décréments.
 
@@ -734,7 +734,7 @@ visitPostIncDecVarExpr(var, op):
   return old
 ```
 
-#### `visitUnitaryExpr` (IRVisitor)
+#### visitUnitaryExpr (IRVisitor)
 
 Responsabilité: générer l'IR des opérations unaires (`-`, `!`).
 
@@ -747,7 +747,7 @@ visitUnitaryExpr(op, e):
   return d
 ```
 
-#### `visitAddSubExpr`, `visitMultDivModExpr`, `visitCompareExpr`, `visitEqualExpr`, `visitLogicBitANDExpr`, `visitLogicBitORExpr`, `visitLogicBitXORExpr` (IRVisitor)
+#### visitAddSubExpr, visitMultDivModExpr, visitCompareExpr, visitEqualExpr, visitLogicBitANDExpr, visitLogicBitORExpr, visitLogicBitXORExpr (IRVisitor)
 
 Responsabilité: générer l'IR des opérations binaires arithmétiques, de comparaison et bitwise.
 
@@ -760,7 +760,7 @@ visitBinary(op, lhs, rhs):
   return d
 ```
 
-#### `visitLogicANDExpr` (court-circuit, IRVisitor)
+#### visitLogicANDExpr (court-circuit, IRVisitor)
 
 Responsabilité: implémenter l'évaluation court-circuit de `&&`.
 
@@ -831,7 +831,7 @@ graph TD
 
 **Court-circuit:** Si `x <= 0` (lhs faux), le rhs n'est jamais évalué - on saute directement à la valeur 0.
 
-#### `visitLogicORExpr` (court-circuit, IRVisitor)
+#### visitLogicORExpr (court-circuit, IRVisitor)
 
 Responsabilité: implémenter l'évaluation court-circuit de `||`.
 
@@ -902,7 +902,7 @@ graph TD
 
 **Court-circuit:** Si `a == 0` (lhs vrai), le rhs n'est jamais évalué - on saute directement à la valeur 1.
 
-#### `visitCallExpr` (IRVisitor)
+#### visitCallExpr (IRVisitor)
 
 ```text
 visitCallExpr(func, args):
@@ -914,7 +914,7 @@ visitCallExpr(func, args):
   return dest
 ```
 
-#### `visitReturn_stmt` (IRVisitor)
+#### visitReturn_stmt (IRVisitor)
 
 ```text
 visitReturn_stmt(ctx):
@@ -927,7 +927,7 @@ visitReturn_stmt(ctx):
   return v
 ```
 
-#### `visitIf_stmt` (IRVisitor)
+#### visitIf_stmt (IRVisitor)
 
 Responsabilité: créer les blocs condition/then/else/end et connecter les branches.
 
@@ -994,7 +994,7 @@ graph TD
 
 **Structure:** Diamond pattern classique (prologue, condition, then, else, end, epilogue).
 
-#### `visitWhile_stmt` (IRVisitor)
+#### visitWhile_stmt (IRVisitor)
 
 Responsabilité: créer les blocs cond/body/end et gérer les piles `breakTargets` et `continueTargets`.
 
@@ -1065,7 +1065,7 @@ graph TD
 
 **Structure:** Loop pattern classique (prologue, init, condition, body, back-edge vers condition, end, epilogue).
 
-#### `visitBreak_stmt`, `visitContinue_stmt` (IRVisitor)
+#### visitBreak_stmt et visitContinue_stmt (IRVisitor)
 
 Responsabilité: générer les sauts vers les cibles courantes de `break` et `continue`.
 
@@ -1084,7 +1084,7 @@ Précondition: la passe sémantique garantie la validité du contexte de saut.
 - `continueTargets` = où aller avec `continue`
 - `breakTargets` = où aller avec `break`
 
-#### `visitSwitch_stmt` (IRVisitor)
+#### visitSwitch_stmt (IRVisitor)
 
 Responsabilité: évaluer l'expression switch, créer chaine de dispatch vers chaque case, supporter fallthrough et break.
 
@@ -1277,7 +1277,7 @@ Si une nouvelle fonctionnalité est ajoutée:
 
 ---
 
-## 9. Exemple fil-rouge (du fichier à l'assembleur)
+## 9. Exemple fil-rouge (du source au CFG)
 
 ### 9.1 Parsing (ANTLR)
 
@@ -1367,7 +1367,7 @@ if_end:
 
 ### 9.4 Visualisation des CFG
 
-#### CFG pour `add(int x, int y)`:
+#### CFG pour add(int x, int y):
 
 ```mermaid
 graph TD
@@ -1388,7 +1388,7 @@ graph TD
 - Temporaire `t0` pour stocker le résultat de l'addition
 - Variable locale `z_2` reçoit le résultat
 
-#### CFG pour `main()`:
+#### CFG pour main():
 
 ```mermaid
 graph TD
@@ -1412,7 +1412,7 @@ graph TD
 
 **Structure:** 5 blocs avec branchement conditionnel (diamond pattern).
 
-### 9.5 code assembleur x86 généré (après backend)
+### 9.5 Assembleur x86-64
 
 ```assembly
 .globl add

@@ -32,7 +32,7 @@ Pour une vue détaillée de l'architecture, des passes internes et du pseudo-cod
   - [7.4 Environnement Windows](#74-environnement-windows)
 - [8. Répartition des tâches](#8-répartition-des-tâches)
 - [9. Pourquoi certains tests peuvent diverger](#9-pourquoi-certains-tests-peuvent-diverger)
-  - [9.1 getchar() / putchar()](#91-getchar--putchar)
+  - [9.1 Getchar et putchar](#91-getchar-et-putchar)
   - [9.2 Dossier testfiles/undefined](#92-dossier-testfilesundefined)
   - [9.3 Tests échoués sur macOS](#93-tests-échoués-sur-macos)
 
@@ -332,14 +332,14 @@ Pour voir la répartition des tâches et l'avancement du projet, consulter le do
 
 ## 9. Pourquoi certains tests peuvent diverger
 
-### 9.1 `getchar()` / `putchar()`
+### 9.1 Getchar et putchar
 
 Dans le cas des tests de la fonction `getchar()`, nous ne pouvons pas inclure dans les testfiles des tests qui attendent un caractère indéfiniment. Nous les avons cependant testés à part, et en entrant une valeur nous-mêmes, les tests rendent des résultats valides. Exemple de test qui rentre dans ce cas-là:
 int main() { int x; x = getchar(); return x; }
 
 De plus, le comportement peut varier selon l'environnement (WSL, Linux natif, macOS/clang). Sous notre version de gcc (clang) sous mac, putchar n'existe pas, gcc le considère comme un programme invalide alors que ce n'est pas le cas.
 
-### 9.2 Dossier `testfiles/undefined`
+### 9.2 Dossier testfiles/undefined
 
 Ces programmes ont un comportement C non défini. Il est normal d'observer des divergences entre ifcc et gcc/clang selon la plate-forme et la version du compilateur. Les résultats ne sont donc pas utilisés comme oracle strict.
 
