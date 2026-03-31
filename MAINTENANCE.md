@@ -1334,12 +1334,9 @@ int main() {
 }
 ```
 
-Points clé:
+Voici l'arbre de parsing généré par ANTLR :
 
-- `prog` contient 2 `function_decl`
-- la déclaration `int z = x + y;` est un `declare_stmt` contenant un `declare_elmt(assign_stmt)`
-- `a += 10` est un `AssignExpr` (opérateur composé)
-- `return add(a, b)` est un `Return_stmt` avec `CallExpr`
+![](antlr4_parse_tree.png)
 
 ### 9.2 Passe sémantique (SymbolVisitor)
 
