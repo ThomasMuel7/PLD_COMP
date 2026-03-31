@@ -37,6 +37,7 @@ Pour visualiser les graphes mermaid en mode preview, nous vous recommandons d'in
   - [5.1 Variables d'état (membres)](#51-variables-détat-membres)
   - [5.2 Helpers](#52-helpers-1)
   - [5.3 Fonctions visitées, une par une](#53-fonctions-visitées-une-par-une)
+  - [5.4 Lexique IR](#54-lexique-ir)
 - [6. Backend et conséquences du mode int-only](#6-backend-et-conséquences-du-mode-int-only)
 - [7. Tests et exécution](#7-tests-et-exécution)
   - [7.1 Build](#71-build)
@@ -46,9 +47,8 @@ Pour visualiser les graphes mermaid en mode preview, nous vous recommandons d'in
   - [9.1 Parsing (ANTLR)](#91-parsing-antlr)
   - [9.2 Passe sémantique (SymbolVisitor)](#92-passe-sémantique-symbolvisitor)
   - [9.3 Passe IR (IRVisitor)](#93-passe-ir-irvisitor)
-  - [9.4 Lexique IR](#94-lexique-ir)
-  - [9.5 Visualisation des CFG](#95-visualisation-des-cfg)
-  - [9.6 Résultat](#96-résultat)
+  - [9.4 Visualisation des CFG](#95-visualisation-des-cfg)
+  - [9.5 Assembleur x86-64 généré](#97-assembleur-x86-64-généré)
 
 ---
 
@@ -1186,6 +1186,50 @@ graph TD
 
 **Structure:** 11 blocs (prologue, 3 blocs test, 3 blocs case, 1 bloc default, 1 bloc end, epilogue) avec chaîne de branchements.
 
+### 5.4 Lexique IR
+
+L'IR est une **représentation intermédiaire totalement indépendante de l'architecture** cible (x86, ARM, RISC-V, etc.).
+
+**Instructions IR disponibles :**
+
+| Instruction | Format                                          | Sémantique                      |
+| ----------- | ----------------------------------------------- | ------------------------------- |
+| `ldconst`   | `ldconst <dest> <imm>`                          | Charge une constante entière    |
+| `copy`      | `copy <dest> <src>`                             | Copie une valeur                |
+| `add`       | `add <dest> <lhs> <rhs>`                        | Addition arithmétique           |
+| `sub`       | `sub <dest> <lhs> <rhs>`                        | Soustraction arithmétique       |
+| `mul`       | `mul <dest> <lhs> <rhs>`                        | Multiplication arithmétique     |
+| `div`       | `div <dest> <lhs> <rhs>`                        | Division entière                |
+| `mod`       | `mod <dest> <lhs> <rhs>`                        | Modulo                          |
+| `neg`       | `neg <dest> <src>`                              | Négation unaire                 |
+| `not_`      | `not_ <dest> <src>`                             | Négation logique (booléenne)    |
+| `cmp_lt`    | `cmp_lt <dest> <lhs> <rhs>`                     | Comparaison < (résultat 0 ou 1) |
+| `cmp_le`    | `cmp_le <dest> <lhs> <rhs>`                     | Comparaison <=                  |
+| `cmp_gt`    | `cmp_gt <dest> <lhs> <rhs>`                     | Comparaison >                   |
+| `cmp_ge`    | `cmp_ge <dest> <lhs> <rhs>`                     | Comparaison >=                  |
+| `cmp_eq`    | `cmp_eq <dest> <lhs> <rhs>`                     | Comparaison ==                  |
+| `cmp_ne`    | `cmp_ne <dest> <lhs> <rhs>`                     | Comparaison !=                  |
+| `bit_and`   | `bit_and <dest> <lhs> <rhs>`                    | ET bitwise                      |
+| `bit_or`    | `bit_or <dest> <lhs> <rhs>`                     | OU bitwise                      |
+| `bit_xor`   | `bit_xor <dest> <lhs> <rhs>`                    | XOR bitwise                     |
+| `branch`    | `branch <cond> <bb_true> <bb_false>`            | Bifurcation conditionnelle      |
+| `jump`      | `jump <bb_target>`                              | Saut inconditionnel             |
+| `call`      | `call <func_name> <dest> [<arg1>, <arg2>, ...]` | Appel de fonction               |
+| `ret`       | `ret <value>`                                   | Retour de fonction              |
+
+**Variables symboliques :**
+
+- **Temporaires :** `t0, t1, t2, ...` (créées lors de l'évaluation d'expressions)
+- **Variables locales :** `varname_0, varname_1, ...` (suffixes uniques pour gérer le shadowing)
+- **Paramètres :** `param_0, param_1, ...` (noms de paramètres avec suffixes uniques)
+
+**Propriétés clés de l'IR :**
+
+1. **Architecture-agnostique** : l'IR ne mentionne jamais de registres (rax, rbx, etc.)
+2. **Noms symboliques** : les variables sont identifiées par nom, pas par adresse physique
+3. **Offset indépendant** : l'allocation de pile vient du backend, pas de l'IR
+4. **Blocs de base explicites** : chaque instruction a une destination connue (bb_next ou bb_else pour les branches)
+
 ---
 
 ## 6. Backend et conséquences du mode int-only
@@ -1233,7 +1277,7 @@ Si une nouvelle fonctionnalité est ajoutée:
 
 ---
 
-## 9. Exemple fil-rouge (du source au CFG)
+## 9. Exemple fil-rouge (du fichier à l'assembleur)
 
 ### 9.1 Parsing (ANTLR)
 
@@ -1264,8 +1308,6 @@ Points clé:
 
 ### 9.2 Passe sémantique (SymbolVisitor)
 
-Ordre logique:
-
 ```text
 visitProg
   -> predeclare add/main dans functionTable
@@ -1287,46 +1329,43 @@ visitProg
 
 ### 9.3 Passe IR (IRVisitor)
 
-Idée générale: un CFG par fonction, chaque expression crée des temporaires (tmpN).
-
-Pseudo-trace simplifiée pour `main`:
+Pseudo-trace simplifiée (sans les blocs de prologue/épilogue ni les détails d'allocation de pile (unique pour le backend)):
 
 ```text
+Fonction add:
 entry -> prologue -> body
 
 body:
-  t0 = ldconst 2
-  copy a_3, t0
-  t1 = ldconst 3
-  copy b_4, t1
-  t2 = cmp_lt a_3, b_4
-  branch t2 -> if_then / if_end
+  t0 = add x_0, y_1
+  copy z_2, t0
+  ret z_2
+  jump epilogue_add
+
+-----------------------------------------
+
+Fonction main:
+entry -> prologue -> body
+
+body:
+  t1 = ldconst 2
+  copy a_3, t1
+  t2 = ldconst 3
+  copy b_4, t2
+  t3 = cmp_lt a_3, b_4
+  branch t3 -> if_then / if_end
 
 if_then:
-  t3 = ldconst 10
-  add a_3, a_3, t3
+  t4 = ldconst 10
+  add a_3, a_3, t4
   jump if_end
 
 if_end:
-  t4 = call add, dest=t4, args=[a_3,b_4]
-  ret t4
-  jump epilogue
+  t5 = call add, dest=t5, args=[a_3,b_4]
+  ret t5
+  jump epilogue_main
 ```
 
-### 9.4 Lexique IR
-
-- `ldconst <dest> <value>` : charger une constante
-- `copy <dest> <src>` : copier une valeur
-- `add/sub/mul/div <dest> <lhs> <rhs>` : opérations arithmétiques
-- `cmp_lt <dest> <lhs> <rhs>` : comparaison (<)
-- `branch <cond>` : bifurcation conditionnelle
-- `call <func> <args>` : appel de fonction
-- `ret <value>` : retour
-- `jump <target>` : saut inconditionnel
-- `t0, t1, ...` : temporaires (variables de courte durée)
-- `a_3, b_4, ...` : variables locales avec suffixes uniques
-
-### 9.5 Visualisation des CFG
+### 9.4 Visualisation des CFG
 
 #### CFG pour `add(int x, int y)`:
 
@@ -1373,8 +1412,68 @@ graph TD
 
 **Structure:** 5 blocs avec branchement conditionnel (diamond pattern).
 
-### 9.6 Résultat
+### 9.5 code assembleur x86 généré (après backend)
 
-- CFG `add` : 3 blocs, un seul chemin d'exécution
-- CFG `main` : 5 blocs, avec convergence après le `if` (diamond pattern)
-- IR strictement entier, sans opérations mémoire indirecte
+```assembly
+.globl add
+ add:
+    pushq %rbp
+    movq %rsp, %rbp
+    subq $48, %rsp
+    movl %edi, -4(%rbp)
+    movl %esi, -8(%rbp)
+    jmp add_body
+add_epilogue:
+    leave
+    ret
+add_body:
+    movl -4(%rbp), %eax
+    movl -8(%rbp), %ebx
+    addl %ebx, %eax
+    movl %eax, -24(%rbp)
+    movl -24(%rbp), %eax
+    movl %eax, -12(%rbp)
+    movl -12(%rbp), %eax
+    jmp add_epilogue
+.globl main
+ main:
+    pushq %rbp
+    movq %rsp, %rbp
+    subq $48, %rsp
+    jmp main_body
+main_epilogue:
+    leave
+    ret
+main_body:
+    movl $2, -28(%rbp)
+    movl -28(%rbp), %eax
+    movl %eax, -16(%rbp)
+    movl $3, -32(%rbp)
+    movl -32(%rbp), %eax
+    movl %eax, -20(%rbp)
+    jmp main_if_cond11_4
+main_if_cond11_4:
+    movl -16(%rbp), %eax
+    movl -20(%rbp), %ebx
+    cmpl %ebx, %eax
+    setl %al
+    movzbl %al, %eax
+    movl %eax, -36(%rbp)
+    cmpl $0, -36(%rbp)
+    je main_if_end11_4
+    jmp main_if_then11_4
+main_if_then11_4:
+    movl $10, -40(%rbp)
+    movl -16(%rbp), %eax
+    movl -40(%rbp), %ebx
+    addl %ebx, %eax
+    movl %eax, -16(%rbp)
+    jmp main_if_end11_4
+main_if_end11_4:
+    movl -16(%rbp), %edi
+    movl -20(%rbp), %esi
+    call add
+    movl %eax, -44(%rbp)
+    movl -44(%rbp), %eax
+    jmp main_epilogue
+```
