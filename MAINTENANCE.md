@@ -9,6 +9,11 @@ Objectif principal:
 - expliciter les variables d'état importantes
 - donner un pseudo-code pour chaque fonction clé redéfinie des passes sémantique et IR
 
+## Disclaimer
+
+Nous avons implémenté des visualisations de CFG dans les différentes parties pour mieux visualiser ce qu'il se passe au niveau de l'IR. Ces visualisations sont très utiles pour comprendre le fonctionnement du compilateur, mais elles ne font pas partie du scope officiel de la maintenance. Elles sont à considérer comme des bonus pédagogiques, et ne sont pas nécessaires pour la compréhension du code ou la réalisation des tâches de maintenance.
+Pour visualiser les graphes mermaid en mode preview, nous vous recommandons d'installer une extension qui gère mermaid sur VSCode : [Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+
 ## Table des matières
 
 - [1. Vue d'ensemble du compilateur](#1-vue-densemble-du-compilateur)
@@ -1322,8 +1327,6 @@ if_end:
 - `a_3, b_4, ...` : variables locales avec suffixes uniques
 
 ### 9.5 Visualisation des CFG
-
-Pour visualiser les graphes mermaid en mode preview, installez une extension qui gère mermaid sur VSCode : [Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
 
 #### CFG pour `add(int x, int y)`:
 
