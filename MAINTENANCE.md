@@ -84,6 +84,41 @@ Point d'entrée runtime du compilateur:
 
 - `compiler/main.cpp`
 
+Voici le schéma d'architecture global du projet:
+
+```mermaid
+graph TD
+    %% Entrée
+    Src[Code Source C<br/><i>.c</i>] -->|Lit fichier| Main
+
+    %% Cœur du compilateur (orchestré par main.cpp)
+    subgraph Compiler ["Compilateur IFCC (main.cpp)"]
+        Main{main.cpp}
+        ANTLR[<b>1. Frontend ANTLR4</b><br/>Lexer + Parser<br/><i>Génère AST</i>]
+        Sym[<b>2. Analyse Sémantique</b><br/>SymbolVisitor<br/><i>Vérifie & Remplit Tables</i>]
+        IR[<b>3. Génération IR & CFG</b><br/>IRVisitor<br/><i>Crée Instructions IR</i>]
+        Back[<b>4. Backend</b><br/>x86Backend / ArmBackend<br/><i>Sélectionne Cible</i>]
+
+        %% Flux interne orchestré par main.cpp
+        Main -->|Initialise & Appelle| ANTLR
+        ANTLR -->|AST| Sym
+        Sym -->|AST Valide + Tables| IR
+        IR -->|CFG / IR| Back
+    end
+
+    %% Sortie
+    Back -->|Écrit stdout| Asm[Code Assembleur<br/><i>.s</i>]
+
+    %% Styles pour la clarté
+    classDef file fill:#f9f9f9,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5;
+    classDef main fill:#dbeafe,stroke:#1d4ed8,stroke-width:2px,color:#111827;
+    classDef step fill:#fff,stroke:#333,stroke-width:1px;
+
+    class Src,Asm file;
+    class Main main;
+    class ANTLR,Sym,IR,Back step;
+```
+
 ---
 
 ## 2. Langage supporté (scope officiel)
