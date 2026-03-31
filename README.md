@@ -194,7 +194,7 @@ Le backend gère plusieurs fonctions dans un même programme:
 - un CFG est généré par fonction
 - les labels assembleur internes sont préfixés par fonction (évite les collisions)
 - les paramètres sont récupérés depuis les registres d'appel
-- la pile locale x86 est réservée explicitement (frame) pour supporter appels imbriqués et récursion
+- la pile locale est réservée explicitement (frame) pour supporter appels imbriqués et récursion (appliqué aux deux backends x86-64 et AArch64)
 
 ## 5. Structure du projet
 
