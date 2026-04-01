@@ -33,7 +33,7 @@ string IRVisitor::createTemp()
 
 string IRVisitor::gen_unique_id(antlr4::ParserRuleContext *ctx)
 {
-    return to_string(ctx->start->getLine()) + "_" + to_string(ctx->start->getCharPositionInLine());
+    return to_string(ctx->start->getLine()) + "_" + to_string(ctx->start->getCharPositionInLine()) + "_" + to_string(uniqueLabelId++);
 }
 
 IRVisitor::IRVisitor(SymbolTable &t, const FunctionTable &ft, int startoffset)
@@ -353,9 +353,9 @@ antlrcpp::Any IRVisitor::visitLogicANDExpr(ifccParser::LogicANDExprContext *ctx)
     current_bb->add_IRInstr(IRInstr::cmp_ne, {leftBool, left, zero});
 
     string uid = gen_unique_id(ctx);
-    BasicBlock *bb_rhs = new BasicBlock(cfg, "land_rhs" + uid + to_string(uniqueLabelId++));
-    BasicBlock *bb_false = new BasicBlock(cfg, "land_false" + uid + to_string(uniqueLabelId++));
-    BasicBlock *bb_end = new BasicBlock(cfg, "land_end" + uid + to_string(uniqueLabelId++));
+    BasicBlock *bb_rhs = new BasicBlock(cfg, "land_rhs" + uid);
+    BasicBlock *bb_false = new BasicBlock(cfg, "land_false" + uid);
+    BasicBlock *bb_end = new BasicBlock(cfg, "land_end" + uid);
 
     current_bb->test_var_name = leftBool;
     current_bb->add_exit(bb_rhs, bb_false);
@@ -386,9 +386,9 @@ antlrcpp::Any IRVisitor::visitLogicORExpr(ifccParser::LogicORExprContext *ctx)
     current_bb->add_IRInstr(IRInstr::cmp_ne, {leftBool, left, zero});
 
     string uid = gen_unique_id(ctx);
-    BasicBlock *bb_true = new BasicBlock(cfg, "lor_true" + uid + to_string(uniqueLabelId++));
-    BasicBlock *bb_rhs = new BasicBlock(cfg, "lor_rhs" + uid + to_string(uniqueLabelId++));
-    BasicBlock *bb_end = new BasicBlock(cfg, "lor_end" + uid + to_string(uniqueLabelId++));
+    BasicBlock *bb_true = new BasicBlock(cfg, "lor_true" + uid);
+    BasicBlock *bb_rhs = new BasicBlock(cfg, "lor_rhs" + uid);
+    BasicBlock *bb_end = new BasicBlock(cfg, "lor_end" + uid);
 
     current_bb->test_var_name = leftBool;
     current_bb->add_exit(bb_true, bb_rhs);
@@ -427,9 +427,9 @@ antlrcpp::Any IRVisitor::visitReturn_stmt(ifccParser::Return_stmtContext *ctx)
 
 antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx)
 {
-    BasicBlock *bb_cond = new BasicBlock(cfg, "if_cond" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
-    BasicBlock *bb_then = new BasicBlock(cfg, "if_then" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
-    BasicBlock *bb_end = new BasicBlock(cfg, "if_end" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
+    BasicBlock *bb_cond = new BasicBlock(cfg, "if_cond" + gen_unique_id(ctx));
+    BasicBlock *bb_then = new BasicBlock(cfg, "if_then" + gen_unique_id(ctx));
+    BasicBlock *bb_end = new BasicBlock(cfg, "if_end" + gen_unique_id(ctx));
     BasicBlock *bb_else = nullptr;
 
     current_bb->add_exit(bb_cond);
@@ -438,7 +438,7 @@ antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx)
 
     if (ctx->stmt().size() > 1)
     {
-        bb_else = new BasicBlock(cfg, "if_else" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
+        bb_else = new BasicBlock(cfg, "if_else" + gen_unique_id(ctx));
         current_bb->add_exit(bb_then, bb_else);
     }
     else
@@ -469,9 +469,9 @@ antlrcpp::Any IRVisitor::visitIf_stmt(ifccParser::If_stmtContext *ctx)
 
 antlrcpp::Any IRVisitor::visitWhile_stmt(ifccParser::While_stmtContext *ctx)
 {
-    BasicBlock *bb_cond = new BasicBlock(cfg, "while_cond" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
-    BasicBlock *bb_body = new BasicBlock(cfg, "while_body" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
-    BasicBlock *bb_end = new BasicBlock(cfg, "while_end" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
+    BasicBlock *bb_cond = new BasicBlock(cfg, "while_cond" + gen_unique_id(ctx));
+    BasicBlock *bb_body = new BasicBlock(cfg, "while_body" + gen_unique_id(ctx));
+    BasicBlock *bb_end = new BasicBlock(cfg, "while_end" + gen_unique_id(ctx));
 
     current_bb->add_exit(bb_cond);
     current_bb = bb_cond;
@@ -510,7 +510,7 @@ antlrcpp::Any IRVisitor::visitContinue_stmt(ifccParser::Continue_stmtContext *ct
 antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
 {
     string switchVal = std::any_cast<string>(visit(ctx->expr()));
-    BasicBlock *bb_end = new BasicBlock(cfg, "switch_end" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
+    BasicBlock *bb_end = new BasicBlock(cfg, "switch_end" + gen_unique_id(ctx));
     vector<pair<int, BasicBlock *>> caseBlocks;
     BasicBlock *defaultBlock = nullptr;
     for (auto part : ctx->switch_part())
@@ -527,18 +527,18 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
             {
                 cval = (int)c->CHAR()->getText()[1];
             }
-            caseBlocks.push_back({cval, new BasicBlock(cfg, "switch_case" + gen_unique_id(part) + to_string(uniqueLabelId++))});
+            caseBlocks.push_back({cval, new BasicBlock(cfg, "switch_case" + gen_unique_id(part))});
         }
         else if (part->default_label() != nullptr)
         {
             if (defaultBlock == nullptr)
             {
-                defaultBlock = new BasicBlock(cfg, "switch_default" + gen_unique_id(part) + to_string(uniqueLabelId++));
+                defaultBlock = new BasicBlock(cfg, "switch_default" + gen_unique_id(part));
             }
         }
     }
 
-    BasicBlock *firstDispatch = new BasicBlock(cfg, "switch_dispatch" + gen_unique_id(ctx) + to_string(uniqueLabelId++));
+    BasicBlock *firstDispatch = new BasicBlock(cfg, "switch_dispatch" + gen_unique_id(ctx));
     current_bb->add_exit(firstDispatch);
 
     BasicBlock *dispatch = firstDispatch;
@@ -553,7 +553,7 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
         BasicBlock *nextDispatch = nullptr;
         if (i + 1 < caseBlocks.size())
         {
-            nextDispatch = new BasicBlock(cfg, "switch_dispatch" + gen_unique_id(ctx) + "_" + to_string(i + 1) + to_string(uniqueLabelId++));
+            nextDispatch = new BasicBlock(cfg, "switch_dispatch" + gen_unique_id(ctx) + "_" + to_string(i + 1));
         }
         else
         {
@@ -590,7 +590,7 @@ antlrcpp::Any IRVisitor::visitSwitch_stmt(ifccParser::Switch_stmtContext *ctx)
         {
             if (defaultBlock == nullptr)
             {
-                defaultBlock = new BasicBlock(cfg, "switch_default_fallback" + gen_unique_id(part) + to_string(uniqueLabelId++));
+                defaultBlock = new BasicBlock(cfg, "switch_default_fallback" + gen_unique_id(part));
             }
             if (hasActiveLabel && current_bb->exit_true == nullptr && current_bb != defaultBlock)
             {

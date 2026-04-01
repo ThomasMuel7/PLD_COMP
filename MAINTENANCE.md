@@ -613,7 +613,7 @@ Responsabilité: fabriquer des labels uniques de blocs via ligne+colonne.
 
 ```text
 gen_unique_id(ctx):
-  retourner "<line>_<column>"
+  retourner "<line>_<column>_<uniqueLabelId>"
 ```
 
 ### 5.3 Fonctions visitées, une par une
