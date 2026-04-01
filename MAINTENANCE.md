@@ -575,6 +575,7 @@ functionTable   : signatures connues
 scopeTable      : resolution nom source -> nom unique
 currentOffset   : offset pile courant pour temporaires
 tempCounter     : compteur tmp0, tmp1, ...
+uniqueLabelId   : compteur suffixe pour labels de blocs (if_then_1, while_cond_2, etc.) (en plus de ligne_colonne)
 uniqueVarId     : compteur suffixe pour noms locals
 breakTargets    : pile de cibles break
 continueTargets : pile de cibles continue

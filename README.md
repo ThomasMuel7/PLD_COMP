@@ -139,7 +139,6 @@ Le visiteur `SymbolVisitor` construit une table des symboles (`SymbolTable`) et 
 
 - erreur si une variable est déclarée plusieurs fois dans un même bloc
 - erreur si une variable est utilisée sans déclaration
-- erreur si une affectation vise une variable non déclarée
 - erreur si une fonction est définie plusieurs fois
 - erreur si la fonction `main` est absente
 - erreur si un paramètre de fonction est dupliqué

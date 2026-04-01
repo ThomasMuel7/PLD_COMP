@@ -23,6 +23,7 @@ private:
     int currentOffset;
     int tempCounter = 0;
     int uniqueVarId = 0;
+    int uniqueLabelId = 0;
     std::vector<BasicBlock *> breakTargets;
     std::vector<BasicBlock *> continueTargets;
 
