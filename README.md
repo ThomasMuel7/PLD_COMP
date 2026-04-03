@@ -2,9 +2,20 @@
 
 Ce dépôt contient notre compilateur ifcc développé en C++ avec ANTLR4 dans le cadre du projet PLD-Comp (INSA Lyon, 4IF3 Hexanome 1 - Carl Habsieger, Charles Cesbron, Alexandre Didier, Hugo Marin, Thomas Muel, 2025-2026).
 
+## Récupération du projet
+
+```bash
+git clone https://github.com/ThomasMuel7/PLD_COMP.git
+cd PLD_COMP
+```
+
+## Slides
+
+Les slides de présentation du projet sont disponibles dans le fichier [PLD_COMP_4231](PLD_COMP_4231.pdf) à la racine du dépôt.
+
 ## Documentation
 
-Pour une vue détaillée de l'architecture, des passes internes et du pseudo-code de maintenance, voir [MAINTENANCE.md](MAINTENANCE.md).
+Pour une vue détaillée de l'architecture, des passes internes et du pseudo-code de maintenance, voir [MAINTENANCE](MAINTENANCE.md).
 
 ## Table des matières
 
