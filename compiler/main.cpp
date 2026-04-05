@@ -40,7 +40,6 @@ int main(int argc, const char **argv)
     exit(1);
   }
 
-  //  Lecture fichier
   ifstream lecture(inputFile);
   if (!lecture)
   {
@@ -49,7 +48,6 @@ int main(int argc, const char **argv)
   }
   in << lecture.rdbuf();
 
-  //  ANTLR
   ANTLRInputStream input(in.str());
   ifccLexer lexer(&input);
   CommonTokenStream tokens(&lexer);
@@ -64,7 +62,6 @@ int main(int argc, const char **argv)
     exit(1);
   }
 
-  //  Analyse sémantique
   SymbolVisitor visitor;
   visitor.visit(tree->prog());
 
@@ -74,11 +71,9 @@ int main(int argc, const char **argv)
     return 1;
   }
 
-  //  IR
   IRVisitor irVisitor(visitor.table, visitor.functionTable, visitor.currentOffset);
   irVisitor.visit(tree->prog());
 
-  //  Backend
   backend *backendInstance = nullptr;
 
   if (target == "x86")

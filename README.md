@@ -13,9 +13,17 @@ cd PLD_COMP
 
 Les slides de présentation du projet sont disponibles dans le fichier [PLD_COMP_4231](PLD_COMP_4231.pdf) à la racine du dépôt.
 
-## Documentation
+## Documentation developpeur
 
 Pour une vue détaillée de l'architecture, des passes internes et du pseudo-code de maintenance, voir [MAINTENANCE](MAINTENANCE.md).
+
+## Presentation de l'hexanome H4231
+
+Thomas Muel,
+Carl Habsieger,
+Hugo Matin,
+Alexandre Didier,
+Charles Cesbron
 
 ## Table des matières
 
